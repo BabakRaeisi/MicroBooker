@@ -9,6 +9,9 @@ on:
 jobs:
   build-dotnet:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,11 +24,14 @@ jobs:
       - name: .NET info
         run: dotnet --info
 
+      - name: List root files
+        run: ls -la
+
       - name: Restore
-        run: dotnet restore ./MicroBooker.slnx
+        run: dotnet restore MicroBooker.slnx
 
       - name: Build
-        run: dotnet build ./MicroBooker.slnx --configuration Release --no-restore
+        run: dotnet build MicroBooker.slnx --configuration Release --no-restore
 
   build-client:
     runs-on: ubuntu-latest
