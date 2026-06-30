@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="MicroBooker.Application/MicroBooker.Application.csproj" />
+  <Project Path="MicroBooker.Domain/MicroBooker.Domain.csproj" />
+  <Project Path="MicroBooker.Infrastructure/MicroBooker.Infrastructure.csproj" />
+  <Project Path="MicroBooker.StorageWorker/MicroBooker.StorageWorker.csproj" />
+  <Project Path="Reservation.Api/Reservation.Api.csproj" />
+</Solution>

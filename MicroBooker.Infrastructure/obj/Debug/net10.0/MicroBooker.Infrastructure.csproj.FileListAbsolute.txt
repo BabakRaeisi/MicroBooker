@@ -1,0 +1,17 @@
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Infrastructure.deps.json
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Infrastructure.dll
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Infrastructure.pdb
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Application.dll
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Domain.dll
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Application.pdb
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\bin\Debug\net10.0\MicroBooker.Domain.pdb
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.csproj.AssemblyReference.cache
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.AssemblyInfoInputs.cache
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.AssemblyInfo.cs
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.csproj.CoreCompileInputs.cache
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBoo.8DCE6B6E.Up2Date
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.dll
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\refint\MicroBooker.Infrastructure.dll
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\MicroBooker.Infrastructure.pdb
+B:\Projects\MicroBooker\MicroBooker.Infrastructure\obj\Debug\net10.0\ref\MicroBooker.Infrastructure.dll

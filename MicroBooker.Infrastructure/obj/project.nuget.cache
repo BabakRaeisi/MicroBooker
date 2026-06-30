@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "amM23PPw/xw=",
+  "success": true,
+  "projectFilePath": "B:\\Projects\\MicroBooker\\MicroBooker.Infrastructure\\MicroBooker.Infrastructure.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\USER\\.nuget\\packages\\confluent.kafka\\2.14.2\\confluent.kafka.2.14.2.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\librdkafka.redist\\2.14.2\\librdkafka.redist.2.14.2.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.0\\microsoft.extensions.logging.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\pipelines.sockets.unofficial\\2.2.16\\pipelines.sockets.unofficial.2.2.16.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\stackexchange.redis\\2.13.17\\stackexchange.redis.2.13.17.nupkg.sha512",
+    "C:\\Users\\USER\\.nuget\\packages\\system.io.hashing\\10.0.2\\system.io.hashing.10.0.2.nupkg.sha512"
+  ],
+  "logs": []
+}

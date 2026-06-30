@@ -1,0 +1,11 @@
+B:\Projects\MicroBooker\MicroBooker.Domain\bin\Debug\net10.0\MicroBooker.Domain.deps.json
+B:\Projects\MicroBooker\MicroBooker.Domain\bin\Debug\net10.0\MicroBooker.Domain.dll
+B:\Projects\MicroBooker\MicroBooker.Domain\bin\Debug\net10.0\MicroBooker.Domain.pdb
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.GeneratedMSBuildEditorConfig.editorconfig
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.AssemblyInfoInputs.cache
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.AssemblyInfo.cs
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.csproj.CoreCompileInputs.cache
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.dll
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\refint\MicroBooker.Domain.dll
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\MicroBooker.Domain.pdb
+B:\Projects\MicroBooker\MicroBooker.Domain\obj\Debug\net10.0\ref\MicroBooker.Domain.dll

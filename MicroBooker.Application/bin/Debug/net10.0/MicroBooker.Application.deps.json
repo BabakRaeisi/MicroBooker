@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "MicroBooker.Application/1.0.0": {
+        "dependencies": {
+          "MicroBooker.Domain": "1.0.0"
+        },
+        "runtime": {
+          "MicroBooker.Application.dll": {}
+        }
+      },
+      "MicroBooker.Domain/1.0.0": {
+        "runtime": {
+          "MicroBooker.Domain.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MicroBooker.Application/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "MicroBooker.Domain/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
