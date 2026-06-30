@@ -19,10 +19,10 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore b:\Projects\MicroBooker\MicroBooker.slnx
+        run: dotnet restore ./MicroBooker.slnx
 
       - name: Build
-        run: dotnet build b:\Projects\MicroBooker\MicroBooker.slnx --no-restore -c Release
+        run: dotnet build ./MicroBooker.slnx --no-restore -c Release
 
   build-client:
     runs-on: ubuntu-latest
