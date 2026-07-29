@@ -1,0 +1,65 @@
+{
+  "family": "microbooker-api-task",
+  "executionRoleArn": "arn:aws:iam::715841355232:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "api-container",
+      "image": "715841355232.dkr.ecr.us-east-1.amazonaws.com/microbooker-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5147,
+          "hostPort": 5147,
+          "protocol": "tcp",
+          "name": "api-port"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ConnectionStrings__Mongo",
+          "value": "mongodb://mongodb.microbooker.local:27017"
+        },
+        {
+          "name": "ConnectionStrings__Redis",
+          "value": "mb-redis-fgo52w.serverless.use1.cache.amazonaws.com:6380,ssl=true,abortConnect=false"
+        },
+        {
+          "name": "Kafka__BootstrapServers",
+          "value": "kafka.microbooker.local:9092"
+        },
+        {
+          "name": "Jwt__Issuer",
+          "value": "AuthService"
+        },
+        {
+          "name": "Jwt__Audience",
+          "value": "AuthServiceClients"
+        },
+        {
+          "name": "Jwt__Key",
+          "value": "YourSuperSecretKeyHereMustBeAtLeast32CharsLongerForProduction"
+        },
+        {
+          "name": "ASPNETCORE_ENVIRONMENT",
+          "value": "Production"
+        },
+        {
+          "name": "ASPNETCORE_URLS",
+          "value": "http://+:5147"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/microbooker-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "api"
+        }
+      }
+    }
+  ]
+}

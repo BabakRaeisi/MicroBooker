@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "namespace": "microbooker.local",
+  "services": [
+    {
+      "portName": "kafka-port",
+      "discoveryName": "kafka",
+      "clientAliases": [
+        {
+          "port": 9092,
+          "dnsName": "kafka.microbooker.local"
+        }
+      ]
+    }
+  ]
+}

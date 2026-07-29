@@ -1,18 +1,22 @@
 using System.Text.Json;
 using Confluent.Kafka;
 using MicroBooker.Domain;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace MicroBooker.Infrastructure;
 
 public class KafkaEventPublisher : IEventPublisher
 {
     private readonly IProducer<Null, string> _producer;
+    private readonly ILogger<KafkaEventPublisher> _logger;
     private const string Topic = "reservations";
 
-    public KafkaEventPublisher()
+    public KafkaEventPublisher(IConfiguration configuration, ILogger<KafkaEventPublisher> logger)
     {
-        
-        var config = new ProducerConfig { BootstrapServers = "localhost:9092" }; //shoud be moved to environment variables
+        _logger = logger;
+        var bootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+        var config = new ProducerConfig { BootstrapServers = bootstrapServers };
         _producer = new ProducerBuilder<Null, string>(config).Build();
     }
 

@@ -1,0 +1,39 @@
+{
+  "family": "microbooker-worker-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::715841355232:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "worker-container",
+      "image": "715841355232.dkr.ecr.us-east-1.amazonaws.com/microbooker-worker:latest",
+      "essential": true,
+      "environment": [
+        {
+          "name": "ConnectionStrings__Mongo",
+          "value": "mongodb://mongodb.microbooker.local:27017"
+        },
+        {
+          "name": "ConnectionStrings__Redis",
+          "value": "mb-redis-fgo52w.serverless.use1.cache.amazonaws.com:6380,ssl=true,abortConnect=false"
+        },
+        {
+          "name": "Kafka__BootstrapServers",
+          "value": "kafka.microbooker.local:9092"
+        },
+        { "name": "DOTNET_ENVIRONMENT", "value": "Production" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/microbooker-worker",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "worker",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

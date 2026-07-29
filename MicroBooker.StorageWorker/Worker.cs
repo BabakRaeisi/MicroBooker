@@ -2,83 +2,117 @@ using System.Text.Json;
 using Confluent.Kafka;
 using MongoDB.Driver;
 using MicroBooker.Domain;
-using MongoDB.Bson.Serialization;
-using MongoDB.Bson.Serialization.Serializers;
+using StackExchange.Redis;
 
 namespace MicroBooker.StorageWorker;
 
 public class Worker : BackgroundService
 {
     private readonly ILogger<Worker> _logger;
-    private readonly IConsumer<Null, string> _consumer;
-    private readonly IMongoCollection<Reservation> _mongoCollection;
+    private readonly IMongoCollection<Reservation>? _mongoCollection;
+    private readonly IDatabase? _redisDb;
+    private readonly string _bootstrapServers;
 
-    public Worker(ILogger<Worker> logger)
+    public Worker(ILogger<Worker> logger, IConfiguration configuration)
     {
         _logger = logger;
+        _bootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
 
-    // FIX: Tell MongoDB explicitly to handle GUIDs using the standard modern format
-        #pragma warning disable CS0618 // Type or member is obsolete (Suppresses old legacy warning)
-        BsonSerializer.RegisterSerializer(new GuidSerializer(MongoDB.Bson.GuidRepresentation.Standard));
-        #pragma warning restore CS0618
-        // 1. Configure the Kafka Consumer
-        var kafkaConfig = new ConsumerConfig
+        try
         {
-            BootstrapServers = "localhost:9092",
-            GroupId = "storage-worker-group", // Identifies this service cluster to Kafka
-            AutoOffsetReset = AutoOffsetReset.Earliest // Read from the beginning if new group
-        };
-        _consumer = new ConsumerBuilder<Null, string>(kafkaConfig).Build();
+            var mongoConnectionString = configuration["ConnectionStrings:Mongo"];
+            if (!string.IsNullOrEmpty(mongoConnectionString))
+            {
+                var mongoClient = new MongoClient(mongoConnectionString);
+                var database = mongoClient.GetDatabase("BookerDb");
+                _mongoCollection = database.GetCollection<Reservation>("reservations");
+                _logger.LogInformation("MongoDB connected successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to connect to MongoDB");
+        }
 
-        // 2. Configure the MongoDB Client
-        var mongoClient = new MongoClient("mongodb://localhost:27017");
-        var database = mongoClient.GetDatabase("BookerDb");
-        _mongoCollection = database.GetCollection<Reservation>("reservations"); // changed from "Reservations"
+        try
+        {
+            var redisConnectionString = configuration["ConnectionStrings:Redis"];
+            if (!string.IsNullOrEmpty(redisConnectionString))
+            {
+                var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+                _redisDb = redis.GetDatabase();
+                _logger.LogInformation("Redis connected successfully");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to connect to Redis");
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Subscribe to the same "reservations" channel our API publishes to
-        _consumer.Subscribe("reservations");
-        _logger.LogInformation("Storage Worker successfully subscribed to Kafka 'reservations' topic.");
+        _logger.LogInformation("Storage Worker started - consuming from Kafka...");
+
+        var config = new ConsumerConfig
+        {
+            BootstrapServers = _bootstrapServers,
+            GroupId = "storage-worker-group",
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            EnableAutoCommit = false
+        };
+
+        using var consumer = new ConsumerBuilder<Ignore, string>(config).Build();
+        consumer.Subscribe("reservations");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                // Pull a message out of the Kafka queue (blocking call until a message arrives)
-                var consumeResult = _consumer.Consume(stoppingToken);
-                
-                if (consumeResult != null)
+                var result = consumer.Consume(TimeSpan.FromSeconds(5));
+                if (result == null) continue;
+
+                _logger.LogInformation("Consumed message from Kafka: {Message}", result.Message.Value);
+
+                var reservation = JsonSerializer.Deserialize<Reservation>(result.Message.Value);
+                if (reservation == null) continue;
+
+                if (_mongoCollection != null)
                 {
-                    _logger.LogInformation("Event intercepted from Kafka: {Message}", consumeResult.Message.Value);
-
-                    // Deserialize the JSON back into our Domain entity
-                    var reservation = JsonSerializer.Deserialize<Reservation>(consumeResult.Message.Value);
-
-                    if (reservation != null)
-                    {
-                        // Safely persist the record into MongoDB asynchronously
-                        await _mongoCollection.InsertOneAsync(reservation, cancellationToken: stoppingToken);
-                        _logger.LogInformation("Successfully persisted Reservation {Id} into MongoDB!", reservation.Id);
-                    }
+                    await _mongoCollection.ReplaceOneAsync(
+                        Builders<Reservation>.Filter.Eq(r => r.Id, reservation.Id),
+                        reservation,
+                        new ReplaceOptions { IsUpsert = true },
+                        stoppingToken
+                    );
+                    _logger.LogInformation("Saved reservation {Id} to MongoDB", reservation.Id);
                 }
+
+                if (_redisDb != null)
+                {
+                    var json = JsonSerializer.Serialize(reservation);
+                    await _redisDb.StringSetAsync(
+                        $"reservation:{reservation.Id}",
+                        json,
+                        TimeSpan.FromHours(24)
+                    );
+                    _logger.LogInformation("Cached reservation {Id} in Redis", reservation.Id);
+                }
+
+                consumer.Commit(result);
             }
-            catch (OperationCanceledException)
+            catch (ConsumeException ex)
             {
-                break; // Graceful shutdown when stoppingToken triggers
+                _logger.LogError(ex, "Kafka consume error");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "An error occurred while processing a reservation event.");
+                _logger.LogError(ex, "Error processing message");
+                await Task.Delay(5000, stoppingToken);
             }
         }
-    }
 
-    public override void Dispose()
-    {
-        _consumer.Close(); // Safely commit offsets and leave the consumer group
-        _consumer.Dispose();
-        base.Dispose();
+        consumer.Close();
+        _logger.LogInformation("Storage Worker stopped");
     }
 }

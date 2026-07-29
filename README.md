@@ -28,6 +28,8 @@ This project is intentionally built as a learning + portfolio system to demonstr
 12. [Troubleshooting](#troubleshooting)
 13. [Interview Talking Points](#interview-talking-points)
 14. [Future Improvements](#future-improvements)
+15. [Changelog](#changelog)
+16. [Next Steps (Roadmap)](#next-steps-roadmap)
 
 ---
 
@@ -379,3 +381,79 @@ Use this framing:
 - Add CI pipeline for build/lint/test
 
 ---
+
+## Changelog
+
+### v0.1.0
+
+- User registration/login integrated with external auth service
+- Reservation creation flow from React client
+- Redis lock + backend conflict handling
+- Kafka event publish + worker consume
+- MongoDB persistence and reservation retrieval
+
+## Next Steps (Roadmap)
+
+1. **Admin Panel**
+   - View all reservations
+   - Delete/cancel reservations
+   - View users (from auth service)
+
+2. **Role-Based Access**
+   - Add `Admin` and `User` roles
+   - Protect admin endpoints with `[Authorize(Roles = "Admin")]`
+
+3. **Reservation Management**
+   - Edit reservation
+   - Cancel reservation
+   - Add validation + audit trail
+
+4. **Observability**
+   - Health checks (`/health`)
+   - Structured logs
+   - Worker consumption metrics
+
+5. **Production Hardening**
+   - Retry + dead-letter strategy for Kafka
+   - Idempotency keys
+   - Rate limiting for reservation endpoint
+
+---
+
+## Deployment Plan (MVP)
+
+### Target
+
+- **Frontend**: Azure Static Web Apps
+- **Reservation API**: Azure Container Apps
+- **Storage Worker**: Azure Container Apps Job / App
+- **MongoDB**: MongoDB Atlas
+- **Redis**: Azure Cache for Redis
+- **Kafka**: Confluent Cloud
+- **Auth Service**: existing external Dockerized service (or move to Azure later)
+
+### Deployment Milestones
+
+1. Deploy frontend with environment variables:
+   - `VITE_API_BASE_URL`
+   - `VITE_AUTH_BASE_URL`
+
+2. Deploy Reservation API and configure:
+   - Mongo connection string
+   - Redis endpoint
+   - Kafka bootstrap server
+   - JWT issuer/audience/key
+
+3. Deploy Storage Worker and configure:
+   - Kafka bootstrap server
+   - Mongo connection string
+
+4. Smoke test:
+   - Login
+   - Reserve seat
+   - Verify worker persistence in Mongo
+   - Verify booked slot appears disabled in UI
+
+5. Add CI/CD:
+   - Build on PR/push
+   - Deploy on merge to `main`

@@ -60,9 +60,11 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadReservations();
-  }, [loadReservations]);
+    if (isLoggedIn) {
+      loadReservations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn]);
 
   const bookedKeys = useMemo(
     () =>

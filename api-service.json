@@ -1,0 +1,30 @@
+{
+    "cluster": "microbooker-cluster",
+    "serviceName": "microbooker-api-service",
+    "taskDefinition": "microbooker-api-task:6",
+    "desiredCount": 1,
+    "launchType": "FARGATE",
+    "networkConfiguration": {
+        "awsvpcConfiguration": {
+            "subnets": ["subnet-0ebcc95efb5dadf5f", "subnet-06f8a87e236fbf3f5"],
+            "securityGroups": ["sg-02b507c929844fee4"],
+            "assignPublicIp": "ENABLED"
+        }
+    },
+    "serviceConnectConfiguration": {
+        "enabled": true,
+        "namespace": "microbooker.local",
+        "services": [
+            {
+                "portName": "api-port",
+                "discoveryName": "api",
+                "clientAliases": [
+                    {
+                        "port": 5147,
+                        "dnsName": "api.microbooker.local"
+                    }
+                ]
+            }
+        ]
+    }
+}

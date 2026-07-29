@@ -1,17 +1,19 @@
 using MicroBooker.Domain;
+using Microsoft.Extensions.Logging;
 
-namespace MicroBooker.Application; 
-
+namespace MicroBooker.Application;
 
 public class ReservationService
 {
     private readonly ILockService _lockService;
     private readonly IEventPublisher _eventPublisher;
+    private readonly ILogger<ReservationService> _logger;
 
-    public ReservationService(ILockService lockService, IEventPublisher eventPublisher)
+    public ReservationService(ILockService lockService, IEventPublisher eventPublisher, ILogger<ReservationService> logger)
     {
         _lockService = lockService;
         _eventPublisher = eventPublisher;
+        _logger = logger;
     }
 
     public async Task<Reservation?> BookTableAsync(
@@ -36,7 +38,18 @@ public class ReservationService
             CreatedAt = DateTime.UtcNow
         };
 
-        await _eventPublisher.PublishReservationCreatedAsync(reservation, ct);
+        // Fire-and-forget — Kafka unavailability must not fail the booking
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _eventPublisher.PublishReservationCreatedAsync(reservation, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to publish reservation event for {ReservationId}", reservation.Id);
+            }
+        });
 
         return reservation;
     }

@@ -62,14 +62,12 @@ const AuthPanel = ({ onClose }) => {
         email: loginForm.email.trim(),
       });
 
-      const token = result?.token || result?.accessToken || "";
+      const token = result?.Token || result?.token || result?.accessToken || "";
       const payload = token ? decodeJwtPayload(token) : null;
 
-      const user = result?.data?.user ?? result?.user ?? result ?? {};
       const id =
-        user?.id ||
-        user?.userId ||
-        user?.customerId ||
+        result?.UserID ||
+        result?.userId ||
         payload?.sub ||
         payload?.nameid ||
         payload?.[
@@ -77,12 +75,8 @@ const AuthPanel = ({ onClose }) => {
         ] ||
         "";
       const name =
-        user?.personName ||
-        user?.userName ||
-        user?.name ||
-        payload?.unique_name ||
-        "";
-      const email = user?.email || payload?.email || loginForm.email.trim();
+        result?.PersonName || result?.personName || payload?.unique_name || "";
+      const email = result?.Email || result?.email || loginForm.email.trim();
 
       if (!id) {
         toast.error(

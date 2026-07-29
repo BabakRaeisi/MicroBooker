@@ -60,6 +60,7 @@ jobs:
     needs: [build-dotnet]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: microbooker-api

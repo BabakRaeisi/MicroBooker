@@ -1,0 +1,37 @@
+{
+  "family": "microbooker-api-task",
+  "executionRoleArn": "arn:aws:iam::715841355232:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "api-container",
+      "image": "715841355232.dkr.ecr.us-east-1.amazonaws.com/microbooker-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5147,
+          "hostPort": 5147,
+          "protocol": "tcp",
+          "name": "api-port"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ConnectionStrings__Mongo",
+          "value": "mongodb://mongodb.microbooker.local:27017"
+        },
+        {
+          "name": "ConnectionStrings__Redis",
+          "value": "mb-redis-fgo52w.serverless.use1.cache.amazonaws.com:6379"
+        },
+        {
+          "name": "Kafka__BootstrapServers",
+          "value": "kafka.microbooker.local:9092"
+        }
+      ]
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512"
+}

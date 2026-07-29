@@ -1,35 +1,37 @@
+version: "3.8"
+
 services:
   redis:
-    image: redis:7
+    image: redis:7-alpine
     container_name: mb-redis
     ports:
       - "6379:6379"
 
   mongodb:
-    image: mongo:6
+    image: mongo:6-jammy
     container_name: mb-mongodb
     ports:
       - "27017:27017"
     environment:
       MONGO_INITDB_DATABASE: BookerDb
 
+  # Apache Kafka requires Zookeeper to manage cluster state
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
+    image: confluentinc/cp-zookeeper:7.5.0
     container_name: mb-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
+      ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
-    image: confluentinc/cp-kafka:7.6.1
+    image: confluentinc/cp-kafka:7.5.0
     container_name: mb-kafka
+    ports:
+      - "9092:9092"
     depends_on:
       - zookeeper
     environment:
-      KAFKA_ZOOKEEPER_CONNECT: mb-zookeeper:2181
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "9092:9092"

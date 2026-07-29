@@ -1,0 +1,50 @@
+{
+  "family": "auth-api-task",
+  "executionRoleArn": "arn:aws:iam::715841355232:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "auth-api-container",
+      "image": "715841355232.dkr.ecr.us-east-1.amazonaws.com/auth-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5001,
+          "hostPort": 5001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "JwtSettings__Issuer",
+          "value": "auth-api-service"
+        },
+        {
+          "name": "ConnectionStrings__Mongo",
+          "value": "mongodb://172.31.77.109:27017"
+        },
+        {
+          "name": "ConnectionStrings__Redis",
+          "value": "mb-redis-fgo52w.serverless.use1.cache.amazonaws.com:6379"
+        },
+        {
+          "name": "Kafka__BootstrapServers",
+          "value": "mb-kafka-service.auth-cluster.local:9092"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/auth-api-task",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512"
+}
