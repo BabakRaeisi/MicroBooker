@@ -9,37 +9,48 @@ using MongoDB.Bson;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.HttpOverrides; // added
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); 
  
-// 1. Register the native Redis client connection
-builder.Services.AddSingleton<IConnectionMultiplexer >(sp => 
-ConnectionMultiplexer.Connect("localhost:6379")) ; 
+// 1. Register Redis
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var connStr = builder.Configuration.GetConnectionString("Redis") 
+                  ?? "localhost:6379";
+    var config = ConfigurationOptions.Parse(connStr);
+    config.AbortOnConnectFail = false;
+    config.ConnectRetry = 3;
+    config.ReconnectRetryPolicy = new ExponentialRetry(5000);
+    return ConnectionMultiplexer.Connect(config);
+});
 
-// 2. Map our Domain Interfaces to their concrete Infrastructure classes
-builder.Services.AddSingleton<ILockService,RedisLockService>();
-builder.Services.AddSingleton<IEventPublisher , KafkaEventPublisher>();
+// 2. Map Domain Interfaces to Infrastructure classes
+builder.Services.AddSingleton<ILockService, RedisLockService>();
+builder.Services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
 builder.Services.AddSingleton<IMongoClient>(_ =>
     new MongoClient(builder.Configuration.GetConnectionString("Mongo") ?? "mongodb://localhost:27017"));
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IMongoClient>().GetDatabase("BookerDb"));
 
-//3. Register our core application use-case orchestrator
-
-builder . Services .AddScoped<ReservationService>();
+// 3. Register application use-case orchestrator
+builder.Services.AddScoped<ReservationService>();
 
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("AllowLocalClient", policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        policy.WithOrigins(
+                "http://localhost:5173",
+                "http://localhost:4200",
+                "http://auth-alb-1077388851.us-east-1.elb.amazonaws.com"
+              )
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -58,35 +69,35 @@ builder.Services
         {
             ValidateIssuer = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
-
             ValidateAudience = true,
             ValidAudience = builder.Configuration["Jwt:Audience"],
-
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(
                 Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
     });
 
-builder.Services.AddAuthorization(); // no fallback/global policy
+builder.Services.AddAuthorization();
+
+// Bind explicitly for ECS/Fargate (unless overridden by env var)
+builder.WebHost.UseUrls(
+    Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:5147");
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.UseCors("AllowLocalClient"); // Must be first
+
+app.MapGet("/health", () => Results.Ok("Healthy"));
+app.MapGet("/live", () => Results.Ok("ok"));
+
+app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
-   app.UseSwagger();
-   app.UseSwaggerUI();
-}
-else
-{
-   app.UseHttpsRedirection();
-}
-app.UseCors();
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers(); // NOT .RequireAuthorization()
+app.MapControllers();
 app.Run();
