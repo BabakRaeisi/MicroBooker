@@ -38,7 +38,7 @@ builder.Services.AddSingleton<IMongoClient>(_ =>
 
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IMongoClient>().GetDatabase("BookerDb"));
-
+builder.Services.AddScoped<IReservationRepository, MongoReservationRepository>();
 // 3. Register application use-case orchestrator
 builder.Services.AddScoped<ReservationService>();
 
@@ -84,6 +84,26 @@ builder.WebHost.UseUrls(
     Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:5147");
 
 var app = builder.Build();
+using (var scope = app.Services.CreateScope())
+{
+    var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
+    var reservations =
+        database.GetCollection<MicroBooker.Domain.Reservation>("reservations");
+
+    var keys = Builders<MicroBooker.Domain.Reservation>.IndexKeys
+        .Ascending(x => x.RestaurantId)
+        .Ascending(x => x.TableId)
+        .Ascending(x => x.TimeSlot);
+
+    await reservations.Indexes.CreateOneAsync(
+        new CreateIndexModel<MicroBooker.Domain.Reservation>(
+            keys,
+            new CreateIndexOptions
+            {
+                Unique = true,
+                Name = "ux_reservation_slot"
+            }));
+}
 
 app.UseCors("AllowLocalClient"); // Must be first
 

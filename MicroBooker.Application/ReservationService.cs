@@ -7,12 +7,18 @@ public class ReservationService
 {
     private readonly ILockService _lockService;
     private readonly IEventPublisher _eventPublisher;
+    private readonly IReservationRepository _reservationRepository;
     private readonly ILogger<ReservationService> _logger;
 
-    public ReservationService(ILockService lockService, IEventPublisher eventPublisher, ILogger<ReservationService> logger)
+    public ReservationService(
+        ILockService lockService,
+        IEventPublisher eventPublisher,
+        IReservationRepository reservationRepository,
+        ILogger<ReservationService> logger)
     {
         _lockService = lockService;
         _eventPublisher = eventPublisher;
+        _reservationRepository = reservationRepository;
         _logger = logger;
     }
 
@@ -20,12 +26,13 @@ public class ReservationService
         ReservationRequestDto request,
         CancellationToken ct = default)
     {
-        bool isLocked = await _lockService.AcquireLockAsync(
+        var isLocked = await _lockService.AcquireLockAsync(
             request.TableId,
             request.TimeSlot,
             TimeSpan.FromSeconds(30));
 
-        if (!isLocked) return null;
+        if (!isLocked)
+            return null;
 
         var reservation = new Reservation
         {
@@ -38,18 +45,34 @@ public class ReservationService
             CreatedAt = DateTime.UtcNow
         };
 
-        // Fire-and-forget — Kafka unavailability must not fail the booking
-        _ = Task.Run(async () =>
+        var created = await _reservationRepository.TryCreateAsync(
+            reservation,
+            ct);
+
+        if (!created)
         {
-            try
-            {
-                await _eventPublisher.PublishReservationCreatedAsync(reservation, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to publish reservation event for {ReservationId}", reservation.Id);
-            }
-        });
+            _logger.LogWarning(
+                "Duplicate booking rejected for {RestaurantId}, {TableId}, {TimeSlot}",
+                request.RestaurantId,
+                request.TableId,
+                request.TimeSlot);
+
+            return null;
+        }
+
+        try
+        {
+            await _eventPublisher.PublishReservationCreatedAsync(
+                reservation,
+                ct);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Booking {ReservationId} was saved, but its event was not published",
+                reservation.Id);
+        }
 
         return reservation;
     }

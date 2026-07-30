@@ -12,10 +12,11 @@ import restaurantTables, { sidebarDates } from "../tablesData";
 import { createReservation, getReservations } from "../api/reservationsApi";
 
 const AppContext = createContext(null);
+const RESERVATION_REFRESH_INTERVAL_MS = 5000;
 
-const normalizeReservation = (r) => ({
-  tableId: r?.tableId ?? r?.TableId ?? "",
-  timeSlot: r?.timeSlot ?? r?.TimeSlot ?? "",
+const normalizeReservation = (reservation) => ({
+  tableId: reservation?.tableId ?? reservation?.TableId ?? "",
+  timeSlot: reservation?.timeSlot ?? reservation?.TimeSlot ?? "",
 });
 
 const to24Hour = (time12h) => {
@@ -31,7 +32,7 @@ const to24Hour = (time12h) => {
 export const AppProvider = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState("");
-  const [currentUser, setCurrentUser] = useState(null); // { id, name, email }
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [selectedDateId, setSelectedDateId] = useState(
     sidebarDates[0]?.id || null,
@@ -48,42 +49,63 @@ export const AppProvider = ({ children }) => {
   const selectedTable =
     restaurantTables.find((table) => table.id === selectedTableId) ?? null;
 
-  const loadReservations = useCallback(async () => {
+  const loadReservations = useCallback(async (showError = true) => {
     try {
       const data = await getReservations();
+
       setReservations(
         Array.isArray(data) ? data.map(normalizeReservation) : [],
       );
     } catch {
-      toast.error("Failed to load reservations");
+      if (showError) {
+        toast.error("Failed to load reservations");
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      loadReservations();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn]);
+    void loadReservations();
+
+    const refreshReservations = () => {
+      void loadReservations(false);
+    };
+
+    const intervalId = window.setInterval(
+      refreshReservations,
+      RESERVATION_REFRESH_INTERVAL_MS,
+    );
+
+    window.addEventListener("focus", refreshReservations);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshReservations);
+    };
+  }, [loadReservations]);
 
   const bookedKeys = useMemo(
     () =>
       new Set(
         reservations
-          .filter((r) => r.tableId && r.timeSlot)
-          .map((r) => `${r.tableId}|${r.timeSlot}`),
+          .filter((reservation) => reservation.tableId && reservation.timeSlot)
+          .map(
+            (reservation) => `${reservation.tableId}|${reservation.timeSlot}`,
+          ),
       ),
     [reservations],
   );
 
   const getBookedTimesForTableOnDate = useCallback(
-    (tableNumber, dateStr) => {
-      const prefix = `${dateStr}T`;
+    (tableNumber, dateString) => {
+      const prefix = `${dateString}T`;
+
       return reservations
         .filter(
-          (r) => r.tableId === tableNumber && r.timeSlot.startsWith(prefix),
+          (reservation) =>
+            reservation.tableId === tableNumber &&
+            reservation.timeSlot.startsWith(prefix),
         )
-        .map((r) => r.timeSlot.slice(11, 16)); // HH:mm
+        .map((reservation) => reservation.timeSlot.slice(11, 16));
     },
     [reservations],
   );
@@ -91,8 +113,10 @@ export const AppProvider = ({ children }) => {
   const isTableBooked = useCallback(
     (tableNumber) => {
       if (!selectedDate || !selectedTime) return false;
-      const slot = `${selectedDate.date}T${to24Hour(selectedTime)}:00`;
-      return bookedKeys.has(`${tableNumber}|${slot}`);
+
+      const timeSlot = `${selectedDate.date}T${to24Hour(selectedTime)}:00`;
+
+      return bookedKeys.has(`${tableNumber}|${timeSlot}`);
     },
     [bookedKeys, selectedDate, selectedTime],
   );
@@ -100,12 +124,14 @@ export const AppProvider = ({ children }) => {
   const isTimeBookedForSelectedTable = useCallback(
     (time12h) => {
       if (!selectedTable || !selectedDate) return false;
-      const hhmm = to24Hour(time12h);
+
+      const time24h = to24Hour(time12h);
       const bookedTimes = getBookedTimesForTableOnDate(
         selectedTable.tableNumber,
         selectedDate.date,
       );
-      return bookedTimes.includes(hhmm);
+
+      return bookedTimes.includes(time24h);
     },
     [selectedTable, selectedDate, getBookedTimesForTableOnDate],
   );
@@ -120,28 +146,43 @@ export const AppProvider = ({ children }) => {
 
   const handleSelectTable = (table) => {
     if (isTableBooked(table.tableNumber)) {
-      return toast.error("This table is already booked for selected date/time");
+      toast.error("This table is already booked for selected date/time");
+      return;
     }
+
     setSelectedTableId(table.id);
     toast.info(`${table.tableNumber.replaceAll("_", " ")} selected`);
   };
 
   const handleReserve = async () => {
     if (!isLoggedIn) {
-      return toast.error("Please log in first");
+      toast.error("Please log in first");
+      return;
     }
 
     if (!currentUser?.id) {
-      return toast.error("User session missing id. Please login again.");
+      toast.error("User session missing id. Please login again.");
+      return;
     }
 
-    if (!selectedTable) return toast.error("Please select a table");
-    if (!selectedDate) return toast.error("Please select a date");
-    if (!selectedTime) return toast.error("Please select a time");
+    if (!selectedTable) {
+      toast.error("Please select a table");
+      return;
+    }
+
+    if (!selectedDate) {
+      toast.error("Please select a date");
+      return;
+    }
+
+    if (!selectedTime) {
+      toast.error("Please select a time");
+      return;
+    }
+
     if (isTableBooked(selectedTable.tableNumber)) {
-      return toast.error(
-        "This slot is already taken. Pick another time/table.",
-      );
+      toast.error("This slot is already taken. Pick another time/table.");
+      return;
     }
 
     const payload = {
@@ -154,15 +195,34 @@ export const AppProvider = ({ children }) => {
 
     try {
       setIsSubmitting(true);
-      await createReservation(payload);
-      await loadReservations();
+
+      const createdReservation = normalizeReservation(
+        await createReservation(payload),
+      );
+
+      if (createdReservation.tableId && createdReservation.timeSlot) {
+        const createdKey = `${createdReservation.tableId}|${createdReservation.timeSlot}`;
+
+        setReservations((currentReservations) => [
+          createdReservation,
+          ...currentReservations.filter(
+            (reservation) =>
+              `${reservation.tableId}|${reservation.timeSlot}` !== createdKey,
+          ),
+        ]);
+      }
+
       toast.success(
         `Reserved ${selectedTable.tableNumber.replaceAll("_", " ")} for ${selectedDate.dayOfWeek}, ${selectedDate.dayLabel} at ${selectedTime}`,
       );
     } catch (error) {
       const message =
         error?.response?.data?.message || "Reservation failed. Try again.";
+
       toast.error(message);
+
+      // Refresh in case another user booked the slot first.
+      void loadReservations(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -200,7 +260,11 @@ export const AppProvider = ({ children }) => {
 };
 
 export const useAppContext = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useAppContext must be used inside AppProvider");
-  return ctx;
+  const context = useContext(AppContext);
+
+  if (!context) {
+    throw new Error("useAppContext must be used inside AppProvider");
+  }
+
+  return context;
 };
