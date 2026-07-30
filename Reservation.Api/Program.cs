@@ -47,9 +47,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowLocalClient", policy =>
     {
         policy.WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:4200",
-                "http://auth-alb-1077388851.us-east-1.elb.amazonaws.com"
+                "http://localhost:5173","http://localhost:4200","https://microbooker.babakraeisi.com"
               )
               .AllowAnyHeader()
               .AllowAnyMethod();
