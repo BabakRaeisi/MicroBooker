@@ -1,196 +1,484 @@
 # MicroBooker
 
-MicroBooker is a distributed reservation demo designed to showcase real backend engineering patterns for booking systems:
+MicroBooker is a distributed restaurant table reservation system built to demonstrate practical backend engineering concepts such as concurrency control, authentication, event-driven communication, background processing, caching, containerization, and cloud deployment.
 
-- **Concurrency protection** (Redis distributed lock)
-- **Event-driven workflow** (Kafka producer/consumer)
-- **Asynchronous persistence pipeline** (API publishes, Worker stores)
-- **Frontend UX safeguards** (disable booked combinations)
-- **Layered backend architecture** (Domain → Application → Infrastructure)
+The application allows authenticated users to select a restaurant table and time slot, create a reservation, and view unavailable booking combinations.
 
-This project is intentionally built as a learning + portfolio system to demonstrate practical microservice concepts, not just CRUD.
+## Live Application
 
----
+- Frontend: `https://microbooker.babakraeisi.com`
+- Reservation API: `https://api.microbooker.babakraeisi.com`
 
-## Table of Contents
+Authentication is provided by a separate microservice:
 
-1. [System Purpose](#system-purpose)
-2. [Architecture Overview](#architecture-overview)
-3. [Repository Structure](#repository-structure)
-4. [Service Responsibilities](#service-responsibilities)
-5. [Reservation Flow (Step-by-Step)](#reservation-flow-step-by-step)
-6. [Concurrency Strategy](#concurrency-strategy)
-7. [API Contracts](#api-contracts)
-8. [Data Model](#data-model)
-9. [Configuration](#configuration)
-10. [Local Setup & Run](#local-setup--run)
-11. [Verification Checklist](#verification-checklist)
-12. [Troubleshooting](#troubleshooting)
-13. [Interview Talking Points](#interview-talking-points)
-14. [Future Improvements](#future-improvements)
-15. [Changelog](#changelog)
-16. [Next Steps (Roadmap)](#next-steps-roadmap)
+- Repository: `AuthMicroservice`
+- Database: PostgreSQL
+- Authentication: JWT access tokens
 
 ---
 
-## System Purpose
+## Main Features
 
-Booking systems are sensitive to race conditions (double booking under simultaneous requests).  
-MicroBooker focuses on solving that by combining:
-
-- **UI prevention**: disable obviously booked options
-- **Backend enforcement**: lock + conflict response as source of truth
-
-The backend remains authoritative even if the UI is bypassed.
+- User registration and login through a separate authentication service
+- JWT-protected reservation creation
+- Restaurant table and time-slot selection
+- Redis-based distributed locking
+- MongoDB duplicate-booking protection
+- Kafka event publishing and consumption
+- Background worker processing
+- Redis reservation caching
+- React-based reservation interface
+- Docker-based local and production environments
+- AWS EC2 and Amazon ECR deployment
+- Health and liveness endpoints
 
 ---
 
-## Architecture Overview
+## Technology Stack
 
-**Frontend:** React (Vite)  
-**API:** ASP.NET Core (`Reservation.Api`)  
-**Worker:** .NET Background Service (`MicroBooker.StorageWorker`)  
-**Messaging:** Kafka  
-**Locking:** Redis  
-**Database:** MongoDB
+### Frontend
 
-### Logical flow
+- React
+- Vite
+- JavaScript
+- Context API
 
-1. User picks table/date/time in UI.
-2. Client calls `POST /api/reservations`.
-3. API tries Redis lock for the reservation key.
-4. If lock fails / slot already taken → `409 Conflict`.
-5. If accepted → API publishes reservation event to Kafka.
-6. Worker consumes event and writes reservation to MongoDB.
-7. Client calls `GET /api/reservations` and disables booked slots.
+### Reservation Backend
+
+- ASP.NET Core
+- C#
+- JWT Bearer authentication
+- Layered architecture
+- MongoDB
+- Redis
+- Apache Kafka
+
+### Authentication Service
+
+- ASP.NET Core
+- C#
+- PostgreSQL
+- Dapper
+- BCrypt
+- FluentValidation
+- JWT
+
+### Infrastructure and Deployment
+
+- Docker
+- Docker Compose
+- Amazon EC2
+- Amazon Elastic Container Registry
+- GitHub Actions
+- CloudFront
+- Route 53
+- HTTPS
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart LR
+    User[User Browser]
+    Frontend[React Frontend]
+    Auth[Auth API]
+    PostgreSQL[(PostgreSQL)]
+    ReservationAPI[Reservation API]
+    RedisLock[(Redis Lock)]
+    MongoDB[(MongoDB)]
+    Kafka[(Kafka)]
+    Worker[Storage Worker]
+    RedisCache[(Redis Cache)]
+
+    User --> Frontend
+
+    Frontend -->|Register and Login| Auth
+    Auth --> PostgreSQL
+    Auth -->|JWT Access Token| Frontend
+
+    Frontend -->|Reservation Request with JWT| ReservationAPI
+
+    ReservationAPI -->|Acquire Temporary Lock| RedisLock
+    ReservationAPI -->|Insert Reservation| MongoDB
+    ReservationAPI -->|Publish Reservation Created Event| Kafka
+
+    Kafka -->|Consume Event| Worker
+    Worker -->|Idempotent Upsert| MongoDB
+    Worker -->|Cache Reservation| RedisCache
+
+    Frontend -->|Load Existing Reservations| ReservationAPI
+    ReservationAPI --> MongoDB
+```
+
+---
+
+## Current Reservation Flow
+
+The current reservation workflow is:
+
+1. The user registers or logs in through the Auth API.
+2. The Auth API validates the credentials and returns a JWT.
+3. The frontend includes the JWT when sending a reservation request.
+4. The Reservation API validates the JWT.
+5. The API extracts the customer ID from the JWT instead of trusting a customer ID sent by the frontend.
+6. The API attempts to acquire a temporary Redis lock for the selected table and time.
+7. If the lock cannot be acquired, the API returns `409 Conflict`.
+8. If the lock succeeds, the API attempts to insert the reservation into MongoDB.
+9. MongoDB uses a unique compound index to prevent duplicate reservations for the same restaurant, table, and time.
+10. If the reservation already exists, the API returns `409 Conflict`.
+11. After the reservation is saved, the API publishes a reservation-created event to Kafka.
+12. The Storage Worker consumes the Kafka event.
+13. The worker performs an idempotent MongoDB upsert.
+14. The worker stores a cached copy of the reservation in Redis for 24 hours.
+15. The worker commits the Kafka message after successful processing.
+16. The API returns `202 Accepted` to the client.
+
+---
+
+## Why Redis Is Used
+
+Redis has two responsibilities in the current system.
+
+### Distributed Locking
+
+Redis provides a temporary lock while a reservation request is being processed.
+
+This reduces the chance of two application instances processing the same table and time simultaneously.
+
+A normal in-memory application lock would only protect one running API instance. Redis provides shared coordination when multiple API instances are running.
+
+The lock is temporary and currently expires after 30 seconds.
+
+### Reservation Cache
+
+The Storage Worker also saves a cached copy of each processed reservation in Redis.
+
+The cached reservation expires after 24 hours.
+
+This demonstrates how frequently accessed data can be made available without repeatedly querying the primary database.
+
+### Important Consistency Rule
+
+Redis is not the final protection against duplicate bookings.
+
+MongoDB remains the authoritative source of truth through its unique compound index.
+
+Redis provides fast early protection, while MongoDB provides the final database-level guarantee.
+
+---
+
+## Why Kafka Is Used
+
+Kafka is used to publish events after reservations are successfully created.
+
+The Reservation API acts as the producer.
+
+The Storage Worker acts as the consumer.
+
+The API publishes a reservation-created event without directly coordinating every downstream operation.
+
+This allows additional consumers to be added later for responsibilities such as:
+
+- Email confirmations
+- Restaurant notifications
+- Analytics
+- Audit logging
+- Payment processing
+- Reporting
+
+Kafka demonstrates asynchronous and event-driven communication between application components.
+
+For a smaller application, alternatives could include:
+
+- RabbitMQ
+- Amazon SQS
+- Azure Service Bus
+- Hangfire
+- Direct background jobs
+- Direct service-to-service communication
+
+Kafka was selected for this project to demonstrate producer-consumer communication and event-driven system design.
+
+---
+
+## Producer and Consumer Model
+
+### Producer
+
+The Reservation API is the Kafka producer.
+
+After MongoDB successfully stores a reservation, the API publishes a message describing the created reservation.
+
+### Kafka
+
+Kafka stores the event in the `reservations` topic.
+
+It acts as the communication layer between the API and background consumers.
+
+### Consumer
+
+The Storage Worker subscribes to the `reservations` topic.
+
+When a new event is available, the worker:
+
+1. Reads the event
+2. Converts the message into a reservation object
+3. Upserts the reservation in MongoDB
+4. Stores the reservation in Redis
+5. Commits the Kafka message
+
+The worker uses the consumer group:
+
+```text
+storage-worker-group
+```
+
+Manual message commits are used so the Kafka offset is committed only after processing completes.
+
+---
+
+## Data Consistency Strategy
+
+MicroBooker uses multiple layers of protection.
+
+### Frontend Availability Check
+
+The frontend loads existing reservations and disables known unavailable table and time combinations.
+
+This improves the user experience but is not considered a security or consistency guarantee.
+
+A user could bypass the frontend and call the API directly.
+
+### Redis Lock
+
+The Redis lock reduces concurrent processing of the same booking request.
+
+It is useful when multiple API instances share the same Redis server.
+
+### MongoDB Unique Index
+
+MongoDB provides the final duplicate-booking protection.
+
+The unique compound index contains:
+
+- `RestaurantId`
+- `TableId`
+- `TimeSlot`
+
+This ensures that the same table cannot be reserved twice for the same restaurant and time.
+
+---
+
+## Entity Relationship Diagram
+
+The authentication and reservation services use separate databases.
+
+There is no database-level foreign key between PostgreSQL and MongoDB.
+
+The reservation’s `CustomerId` is populated from the authenticated JWT and logically refers to a user managed by the Auth service.
+
+```mermaid
+erDiagram
+    USER ||--o{ RESERVATION : creates
+    RESTAURANT ||--o{ TABLE : contains
+    TABLE ||--o{ RESERVATION : receives
+    RESTAURANT ||--o{ RESERVATION : owns
+
+    USER {
+        string Id PK
+        string Email
+        string PasswordHash
+        datetime CreatedAt
+    }
+
+    RESTAURANT {
+        string RestaurantId PK
+        string Name
+    }
+
+    TABLE {
+        string TableId PK
+        string RestaurantId
+        int Capacity
+    }
+
+    RESERVATION {
+        guid Id PK
+        string CustomerId
+        string RestaurantId
+        string TableId
+        string TimeSlot
+        int PartySize
+        datetime CreatedAt
+    }
+```
+
+### Current Model Note
+
+At present, `Restaurant` and `Table` are represented primarily through identifiers used by the frontend and reservation records.
+
+They are included in the diagram to show the intended business relationship.
+
+The main persisted reservation document contains:
+
+- `Id`
+- `CustomerId`
+- `RestaurantId`
+- `TableId`
+- `TimeSlot`
+- `PartySize`
+- `CreatedAt`
 
 ---
 
 ## Repository Structure
 
-- `MicroBooker.Client/`  
-  React UI, context/state, API client adapters, table/date/time selection UX.
-
-- `Reservation.Api/`  
-  HTTP endpoints, DI container setup, orchestration through Application layer.
-
-- `MicroBooker.Domain/`  
-  Core entity + interfaces (contracts):
-  - `Reservation`
-  - `ILockService`
-  - `IEventPublisher`
-
-- `MicroBooker.Application/`  
-  Use-case logic:
-  - `ReservationRequestDto`
-  - `ReservationService` (lock + publish orchestration)
-
-- `MicroBooker.Infrastructure/`  
-  Technical implementations:
-  - `RedisLockService`
-  - `KafkaEventPublisher`
-
-- `MicroBooker.StorageWorker/`  
-  Kafka consumer that persists events to MongoDB.
-
-- `docker-compose.yml`  
-  Local infrastructure: Redis, MongoDB, Zookeeper, Kafka.
-
----
-
-## Service Responsibilities
-
-## Reservation.Api
-
-- Handles reservation API requests.
-- Calls `ReservationService`.
-- Returns:
-  - success (Accepted/OK based on controller behavior)
-  - `409 Conflict` on lock/contention rule failure.
-
-## MicroBooker.Application (ReservationService)
-
-- Validates request flow.
-- Acquires lock via `ILockService`.
-- Builds reservation domain object.
-- Publishes event via `IEventPublisher`.
-
-## MicroBooker.Infrastructure
-
-- `RedisLockService`: lock key management for concurrency control.
-- `KafkaEventPublisher`: publishes reservation-created events to topic `reservations`.
-
-## MicroBooker.StorageWorker
-
-- Subscribes to Kafka `reservations` topic.
-- Deserializes event payload.
-- Persists into MongoDB collection `BookerDb.reservations`.
-
-## MicroBooker.Client
-
-- Fetches existing reservations.
-- Normalizes response shape.
-- Computes booked table/time combinations.
-- Disables unavailable options.
-- Submits reservation payload.
+```text
+MicroBooker/
+│
+├── MicroBooker.Client/
+│   └── React frontend
+│
+├── Reservation.Api/
+│   ├── API controllers
+│   ├── JWT authentication
+│   ├── dependency injection
+│   ├── MongoDB index creation
+│   └── health endpoints
+│
+├── MicroBooker.Application/
+│   ├── reservation use cases
+│   ├── reservation request DTO
+│   └── booking orchestration
+│
+├── MicroBooker.Domain/
+│   ├── Reservation entity
+│   ├── ILockService
+│   ├── IEventPublisher
+│   └── IReservationRepository
+│
+├── MicroBooker.Infrastructure/
+│   ├── RedisLockService
+│   ├── KafkaEventPublisher
+│   └── MongoReservationRepository
+│
+├── MicroBooker.StorageWorker/
+│   ├── Kafka consumer
+│   ├── MongoDB upsert
+│   └── Redis caching
+│
+├── docker-compose.yml
+└── README.md
+```
 
 ---
 
-## Reservation Flow (Step-by-Step)
+## Component Responsibilities
 
-1. **Load UI data**
-   - Client requests `GET /api/reservations`.
-   - Existing reservations are mapped into availability state.
+### MicroBooker.Client
 
-2. **User selects**
-   - Table
-   - Date
-   - Time
+The React frontend is responsible for:
 
-3. **Client submits**
-   - `POST /api/reservations` with DTO fields:
-     - `customerId`
-     - `restaurantId`
-     - `tableId`
-     - `timeSlot` (ISO-like timestamp)
-     - `partySize`
+- User interaction
+- Registration and login requests
+- JWT storage and usage
+- Restaurant table selection
+- Date and time selection
+- Party-size selection
+- Loading existing reservations
+- Disabling known unavailable slots
+- Sending authenticated reservation requests
 
-4. **API processing**
-   - Builds lock key from table + timeslot.
-   - If key is locked / invalid condition:
-     - return `409 Conflict`.
-   - Else publish Kafka event and return success.
+### Reservation.Api
 
-5. **Worker processing**
-   - Consumes event
-   - Saves in MongoDB
+The Reservation API is responsible for:
 
-6. **Client refreshes availability**
-   - Slot appears booked and becomes disabled in UI.
+- Accepting HTTP requests
+- Validating JWTs
+- Extracting the authenticated customer identity
+- Returning existing reservations
+- Calling the application service
+- Returning HTTP responses
+- Configuring MongoDB, Redis, Kafka, authentication, and CORS
+- Creating the unique MongoDB reservation index
+- Providing health endpoints
+
+### MicroBooker.Application
+
+The application layer coordinates the booking use case.
+
+The Reservation Service:
+
+1. Acquires the Redis lock
+2. Creates the reservation object
+3. Attempts to insert the reservation into MongoDB
+4. Publishes the Kafka event
+5. Returns the reservation result
+
+### MicroBooker.Domain
+
+The domain layer contains the core business model and service contracts.
+
+It does not depend on Redis, Kafka, MongoDB, or ASP.NET Core implementations.
+
+### MicroBooker.Infrastructure
+
+The infrastructure layer contains external system implementations.
+
+It provides:
+
+- Redis distributed locking
+- Kafka event publishing
+- MongoDB reservation persistence
+
+### MicroBooker.StorageWorker
+
+The Storage Worker runs independently from the HTTP API.
+
+It:
+
+- Subscribes to the Kafka `reservations` topic
+- Processes reservation-created events
+- Upserts reservations in MongoDB
+- Caches reservations in Redis
+- Commits Kafka offsets manually
 
 ---
 
-## Concurrency Strategy
+## API Endpoints
 
-MicroBooker uses **defense in depth**:
+### Health Check
 
-1. **Frontend guard (UX):**
-   - Disable already-booked combinations to reduce invalid attempts.
+```http
+GET /health
+```
 
-2. **Backend guarantee (consistency):**
-   - Redis distributed lock to prevent concurrent write race.
-   - Conflict response (`409`) for contested slot.
+Example response:
 
-This distinction is important in interviews:  
-UI is convenience; backend is correctness.
+```text
+Healthy
+```
 
----
+### Liveness Check
 
-## API Contracts
+```http
+GET /live
+```
 
-## `GET /api/reservations`
+Example response:
 
-Returns persisted reservations.
+```text
+ok
+```
+
+### Get Reservations
+
+```http
+GET /api/reservations
+```
+
+This endpoint currently allows anonymous access.
 
 Example response:
 
@@ -198,262 +486,556 @@ Example response:
 [
   {
     "id": "cbe93a60-ae99-4b7e-9d48-d168ba4004c9",
-    "customerId": "demo-user-1",
+    "customerId": "user-id-from-auth-service",
     "restaurantId": "demo-restaurant-1",
     "tableId": "table_number_2",
-    "timeSlot": "2026-06-21T19:00:00",
+    "timeSlot": "2026-07-30T20:00:00",
     "partySize": 2,
-    "createdAt": "2026-06-19T17:34:42.06Z"
+    "createdAt": "2026-07-30T18:34:42.060Z"
   }
 ]
 ```
 
-## `POST /api/reservations`
+### Create Reservation
 
-Creates a reservation request.
+```http
+POST /api/reservations
+Authorization: Bearer <access-token>
+Content-Type: application/json
+```
 
 Example request:
 
 ```json
 {
-  "customerId": "demo-user-1",
   "restaurantId": "demo-restaurant-1",
   "tableId": "table_number_2",
-  "timeSlot": "2026-06-21T19:00:00",
+  "timeSlot": "2026-07-30T20:00:00",
   "partySize": 2
 }
 ```
 
-Expected outcomes:
+The API does not trust a client-provided customer ID.
 
-- Success (`202` or `200`, based on controller implementation)
-- `409 Conflict` if lock/business conflict occurs
+The customer ID is taken from the authenticated JWT.
 
----
+### Responses
 
-## Data Model
+#### Successful Reservation
 
-Primary reservation fields:
-
-- `Id` (Guid)
-- `CustomerId`
-- `RestaurantId`
-- `TableId`
-- `TimeSlot`
-- `PartySize`
-- `CreatedAt` (UTC)
-
-Mongo target:
-
-- Database: `BookerDb`
-- Collection: `reservations` (lowercase recommended)
-
----
-
-## Configuration
-
-## Client
-
-`MicroBooker.Client/.env`
-
-```env
-VITE_API_BASE_URL=http://localhost:5147
+```http
+202 Accepted
 ```
 
-## API
+#### Slot Locked or Already Reserved
 
-`Reservation.Api/appsettings.json`
+```http
+409 Conflict
+```
+
+Example:
 
 ```json
 {
-  "ConnectionStrings": {
-    "Mongo": "mongodb://localhost:27017"
-  }
+  "message": "Slot is locked or already booked."
 }
 ```
 
-If API port changes, update `VITE_API_BASE_URL` accordingly.
+#### Missing or Invalid Authentication
+
+```http
+401 Unauthorized
+```
 
 ---
 
-## Local Setup & Run
+## MongoDB Reservation Document
 
-## 1) Start infrastructure
+Example reservation document:
 
-```powershell
-cd b:\Projects\MicroBooker
+```json
+{
+  "id": "cbe93a60-ae99-4b7e-9d48-d168ba4004c9",
+  "customerId": "authenticated-user-id",
+  "restaurantId": "demo-restaurant-1",
+  "tableId": "table_number_2",
+  "timeSlot": "2026-07-30T20:00:00",
+  "partySize": 2,
+  "createdAt": "2026-07-30T18:34:42.060Z"
+}
+```
+
+Database:
+
+```text
+BookerDb
+```
+
+Collection:
+
+```text
+reservations
+```
+
+Unique index:
+
+```text
+RestaurantId + TableId + TimeSlot
+```
+
+---
+
+## Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client as React Client
+    participant Auth as Auth API
+    participant PostgreSQL
+    participant Reservation as Reservation API
+
+    User->>Client: Enter credentials
+    Client->>Auth: Login request
+    Auth->>PostgreSQL: Find user
+    PostgreSQL-->>Auth: User record
+    Auth->>Auth: Verify password
+    Auth-->>Client: JWT access token
+    Client->>Reservation: Reservation request with JWT
+    Reservation->>Reservation: Validate token
+    Reservation->>Reservation: Extract customer ID
+```
+
+The Reservation API validates:
+
+- JWT issuer
+- JWT audience
+- JWT signature
+- JWT expiration
+
+The customer identity is extracted from the token claims.
+
+---
+
+## Reservation Sequence
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as Reservation API
+    participant Redis
+    participant MongoDB
+    participant Kafka
+    participant Worker
+
+    Client->>API: POST reservation with JWT
+    API->>API: Validate JWT and extract user ID
+    API->>Redis: Acquire temporary booking lock
+
+    alt Lock unavailable
+        Redis-->>API: Lock rejected
+        API-->>Client: 409 Conflict
+    else Lock acquired
+        Redis-->>API: Lock accepted
+        API->>MongoDB: Insert reservation
+
+        alt Duplicate reservation
+            MongoDB-->>API: Unique index violation
+            API-->>Client: 409 Conflict
+        else Reservation stored
+            MongoDB-->>API: Insert successful
+            API->>Kafka: Publish reservation-created event
+            API-->>Client: 202 Accepted
+            Kafka->>Worker: Deliver event
+            Worker->>MongoDB: Upsert by reservation ID
+            Worker->>Redis: Cache for 24 hours
+            Worker->>Kafka: Commit message
+        end
+    end
+```
+
+---
+
+## Local Development
+
+### Prerequisites
+
+Install:
+
+- .NET SDK
+- Node.js
+- Docker Desktop
+- Git
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/BabakRaeisi/MicroBooker.git
+cd MicroBooker
+```
+
+### Start Infrastructure
+
+```bash
 docker compose up -d
-docker ps
 ```
 
-Expected containers:
+The Docker environment should provide services such as:
 
-- `mb-redis`
-- `mb-mongodb`
-- `mb-zookeeper`
-- `mb-kafka`
+- Redis
+- MongoDB
+- Kafka
+- Zookeeper, when required by the configured Kafka image
 
-## 2) Start API
+### Start the Reservation API
 
-```powershell
-cd b:\Projects\MicroBooker\Reservation.Api
+```bash
+cd Reservation.Api
 dotnet run
 ```
 
-Confirm listening URL (example): `http://localhost:5147`
+The default configured address is:
 
-## 3) Start Worker
+```text
+http://localhost:5147
+```
 
-```powershell
-cd b:\Projects\MicroBooker\MicroBooker.StorageWorker
+### Start the Storage Worker
+
+Open another terminal:
+
+```bash
+cd MicroBooker.StorageWorker
 dotnet run
 ```
 
-## 4) Start Client
+### Start the React Client
 
-```powershell
-cd b:\Projects\MicroBooker\MicroBooker.Client
+Open another terminal:
+
+```bash
+cd MicroBooker.Client
 npm install
 npm run dev
 ```
 
 ---
 
+## Configuration
+
+Configuration values may be supplied through `appsettings.json`, environment-specific settings, Docker Compose, or environment variables.
+
+### Reservation API
+
+Required configuration includes:
+
+```text
+ConnectionStrings:Mongo
+ConnectionStrings:Redis
+Kafka:BootstrapServers
+Jwt:Issuer
+Jwt:Audience
+Jwt:Key
+```
+
+### Storage Worker
+
+Required configuration includes:
+
+```text
+ConnectionStrings:Mongo
+ConnectionStrings:Redis
+Kafka:BootstrapServers
+```
+
+### Frontend
+
+The frontend requires API addresses for:
+
+```text
+VITE_API_BASE_URL
+VITE_AUTH_BASE_URL
+```
+
+Do not commit production secrets or signing keys to the repository.
+
+Use environment variables or a secrets-management service for sensitive values.
+
+---
+
+## CORS Configuration
+
+The Reservation API currently permits the following frontend origins:
+
+```text
+http://localhost:5173
+http://localhost:4200
+https://microbooker.babakraeisi.com
+```
+
+The production frontend origin must also be allowed by the separate Auth API.
+
+---
+
+## AWS Deployment
+
+The production version is deployed on AWS.
+
+### Deployment Overview
+
+```mermaid
+flowchart TB
+    Browser[User Browser]
+    Route53[Amazon Route 53]
+    CloudFront[Amazon CloudFront]
+    Frontend[Frontend Distribution]
+    EC2[Amazon EC2]
+    Docker[Docker Compose]
+    ECR[Amazon ECR]
+    AuthAPI[Auth API Container]
+    ReservationAPI[Reservation API Container]
+    Worker[Storage Worker Container]
+    PostgreSQL[(PostgreSQL)]
+    MongoDB[(MongoDB)]
+    Redis[(Redis)]
+    Kafka[(Kafka)]
+
+    Browser --> Route53
+    Route53 --> CloudFront
+    CloudFront --> Frontend
+    Browser --> ReservationAPI
+
+    ECR --> EC2
+    EC2 --> Docker
+
+    Docker --> AuthAPI
+    Docker --> ReservationAPI
+    Docker --> Worker
+    Docker --> PostgreSQL
+    Docker --> MongoDB
+    Docker --> Redis
+    Docker --> Kafka
+```
+
+### Deployment Process
+
+1. Code is pushed to GitHub.
+2. GitHub Actions builds the Docker image.
+3. The image is pushed to Amazon ECR.
+4. The EC2 instance authenticates with ECR.
+5. Docker Compose pulls the latest image.
+6. The affected container is recreated.
+7. Health endpoints and API requests are tested.
+
+---
+
 ## Verification Checklist
 
-- [ ] `GET /api/reservations` returns JSON (not error page)
-- [ ] New reservation appears in MongoDB (`BookerDb.reservations`)
-- [ ] Duplicate same table/time gets `409` (or blocked by UI)
-- [ ] UI shows booked state after refresh
-- [ ] Worker logs confirm Kafka consumption + Mongo insert
+After starting or deploying the system, verify:
 
-Optional direct check:
-
-```powershell
-Invoke-RestMethod http://localhost:5147/api/reservations
-```
+- The frontend loads successfully
+- Registration works
+- Login returns a JWT
+- Authenticated reservation creation returns `202 Accepted`
+- Rebooking the same restaurant, table, and time returns `409 Conflict`
+- Reservations appear in MongoDB
+- The worker consumes Kafka messages
+- Worker logs show MongoDB upserts
+- Worker logs show Redis caching
+- `GET /api/reservations` returns stored reservations
+- Booked slots are disabled in the frontend
+- `/health` returns a successful response
+- `/live` returns a successful response
 
 ---
 
 ## Troubleshooting
 
-## `ERR_CONNECTION_REFUSED` from frontend
+### Frontend Cannot Reach the API
 
-- API not running or wrong port in `.env`.
-- Restart Vite after changing `.env`.
+Check:
 
-## `GET /api/reservations` returns `[]` after booking
+- The API container or process is running
+- The frontend API URL is correct
+- DNS is configured correctly
+- HTTPS is working
+- The frontend origin is included in the API CORS policy
 
-- Worker not running or not consuming topic.
-- Topic mismatch between publisher and consumer.
-- Collection naming mismatch (`reservations` vs `Reservations`).
+### Login Works Through Direct API Calls but Fails in the Browser
 
-## BSON serialization exception on GET
+This is commonly a CORS problem.
 
-- Do not return raw `BsonDocument` directly.
-- Return typed `Reservation` model from controller.
+Ensure the Auth API allows:
 
-## Bad time format stored (e.g. `06:00 PM:00`)
+```text
+https://microbooker.babakraeisi.com
+```
 
-- Ensure frontend converts to 24-hour format before submit:
-  `YYYY-MM-DDTHH:mm:ss`
+### Reservation Returns 401
 
----
+Check:
 
-## Interview Talking Points
+- The Authorization header is present
+- The token begins with `Bearer`
+- The token has not expired
+- The Auth API and Reservation API use matching issuer, audience, and signing-key settings
+- The token contains a supported user ID claim
 
-Use this framing:
+### Reservation Returns 409
 
-- “I implemented a reservation workflow with **Redis distributed locking** to prevent race-condition double booking.”
-- “I used **Kafka** to decouple API request handling from persistence side effects.”
-- “The API publishes events; a **background worker** consumes and writes to Mongo.”
-- “Frontend disables known-booked slots for UX, but backend still enforces conflicts with `409`.”
+The selected slot is either:
 
----
+- currently protected by the Redis lock; or
+- already stored in MongoDB.
 
-## Future Improvements
+### Reservation Does Not Appear in the Frontend
 
-- Add consumer groups + retries/dead-letter topic for worker resilience
-- Add idempotency key to reservation requests
-- Add OpenTelemetry tracing across API/Worker
-- Add integration tests for lock conflict scenarios
-- Add auth + real customer/restaurant identity context
-- Add CI pipeline for build/lint/test
+Check:
 
----
+- The reservation exists in MongoDB
+- `GET /api/reservations` is working
+- The frontend reloads reservation availability
+- The frontend normalizes the table and time values consistently
 
-## Changelog
+### Worker Does Not Receive Messages
 
-### v0.1.0
+Check:
 
-- User registration/login integrated with external auth service
-- Reservation creation flow from React client
-- Redis lock + backend conflict handling
-- Kafka event publish + worker consume
-- MongoDB persistence and reservation retrieval
+- Kafka is running
+- The producer and consumer use the same bootstrap server
+- Both use the `reservations` topic
+- The worker is running
+- Network connectivity between containers is working
+- Kafka advertised listeners are configured correctly
 
-## Next Steps (Roadmap)
+### Worker Reprocesses a Message
 
-1. **Admin Panel**
-   - View all reservations
-   - Delete/cancel reservations
-   - View users (from auth service)
+Kafka may redeliver a message when processing finishes but the offset is not committed.
 
-2. **Role-Based Access**
-   - Add `Admin` and `User` roles
-   - Protect admin endpoints with `[Authorize(Roles = "Admin")]`
+The worker uses a MongoDB upsert by reservation ID to make repeated processing safer.
 
-3. **Reservation Management**
-   - Edit reservation
-   - Cancel reservation
-   - Add validation + audit trail
-
-4. **Observability**
-   - Health checks (`/health`)
-   - Structured logs
-   - Worker consumption metrics
-
-5. **Production Hardening**
-   - Retry + dead-letter strategy for Kafka
-   - Idempotency keys
-   - Rate limiting for reservation endpoint
+This is an idempotent-processing strategy.
 
 ---
 
-## Deployment Plan (MVP)
+## Design Decisions
 
-### Target
+### Why Use a Separate Auth Service?
 
-- **Frontend**: Azure Static Web Apps
-- **Reservation API**: Azure Container Apps
-- **Storage Worker**: Azure Container Apps Job / App
-- **MongoDB**: MongoDB Atlas
-- **Redis**: Azure Cache for Redis
-- **Kafka**: Confluent Cloud
-- **Auth Service**: existing external Dockerized service (or move to Azure later)
+Authentication is separated from reservation logic so each service has a focused responsibility.
 
-### Deployment Milestones
+The Auth service manages:
 
-1. Deploy frontend with environment variables:
-   - `VITE_API_BASE_URL`
-   - `VITE_AUTH_BASE_URL`
+- User accounts
+- Password hashing
+- Credential validation
+- JWT generation
 
-2. Deploy Reservation API and configure:
-   - Mongo connection string
-   - Redis endpoint
-   - Kafka bootstrap server
-   - JWT issuer/audience/key
+The Reservation API only validates the issued token and uses its customer identity.
 
-3. Deploy Storage Worker and configure:
-   - Kafka bootstrap server
-   - Mongo connection string
+### Why Use MongoDB?
 
-4. Smoke test:
-   - Login
-   - Reserve seat
-   - Verify worker persistence in Mongo
-   - Verify booked slot appears disabled in UI
+Reservation records are simple documents and can be stored without complex joins.
 
-5. Add CI/CD:
-   - Build on PR/push
-   - Deploy on merge to `main`
+MongoDB also provides:
+
+- Flexible document storage
+- Compound indexes
+- Unique constraints
+- Good support for time-based records
+- Straightforward integration with .NET
+
+### Why Use PostgreSQL for Authentication?
+
+User accounts have structured and relational data requirements.
+
+PostgreSQL provides:
+
+- Strong consistency
+- Unique email constraints
+- Transactions
+- Structured querying
+- Reliable relational storage
+
+### Why Use Redis?
+
+Redis provides fast shared locking across API instances and short-lived caching.
+
+### Why Use Kafka?
+
+Kafka allows reservation events to be processed independently from the original API request and supports future event consumers.
+
+### Why Keep the Database Unique Index?
+
+Distributed locks can expire or fail.
+
+The database must still enforce the final consistency rule.
+
+The unique MongoDB index is the authoritative double-booking safeguard.
+
+---
+
+## Current Limitations
+
+This project is a portfolio and learning system rather than a complete commercial booking platform.
+
+Current limitations include:
+
+- The Redis lock key does not currently include `RestaurantId`
+- The worker repeats a MongoDB write already performed by the API
+- Event publishing is not transactional with the MongoDB insert
+- A saved reservation can exist even if Kafka publishing fails
+- No transactional outbox is implemented
+- No dead-letter topic is configured
+- No automated retry policy exists for failed events
+- Cancellation and modification workflows are limited
+- Restaurant and table management are not fully modeled
+- Redis cache reads are not yet part of the main reservation query path
+- Public reservation retrieval may expose more information than a production API should return
+- Secrets should be moved to a managed secrets service
+- Production databases and messaging could be moved to managed cloud services
+
+---
+
+## Planned Improvements
+
+- Add `RestaurantId` to the Redis lock key
+- Implement the transactional outbox pattern
+- Add Kafka retry and dead-letter topics
+- Add integration tests for simultaneous reservations
+- Add cancellation and reservation modification
+- Add admin authorization
+- Add restaurant and table management
+- Add pagination and filtering
+- Return dedicated response DTOs instead of complete persistence models
+- Protect reservation queries based on user or admin permissions
+- Use Redis cache during read operations
+- Add OpenTelemetry tracing
+- Add structured centralized logging
+- Add metrics for booking conflicts and Kafka processing
+- Store secrets in AWS Secrets Manager or Systems Manager Parameter Store
+- Add automated deployment smoke tests
+
+---
+
+## Interview Summary
+
+A concise description of the project:
+
+> MicroBooker is a distributed restaurant reservation system built with React and ASP.NET Core. Authentication is handled by a separate PostgreSQL-based Auth service that issues JWTs. When an authenticated user creates a reservation, the Reservation API uses Redis for temporary distributed locking and MongoDB with a unique compound index as the final double-booking safeguard. After storing the reservation, the API publishes an event to Kafka. A background worker consumes the event, performs an idempotent MongoDB upsert, caches the reservation in Redis, and manually commits the Kafka message. The application is containerized with Docker and deployed on AWS using EC2, ECR, Route 53, CloudFront, and GitHub Actions.
+
+---
+
+## License
+
+This project was created as a portfolio and learning project.
+
+Add a license file before allowing external reuse or redistribution.
+
+---
+
+## Author
+
+**Babak Raeisi**
+
+- GitHub: `https://github.com/BabakRaeisi`
