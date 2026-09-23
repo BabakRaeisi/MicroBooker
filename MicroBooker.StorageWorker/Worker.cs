@@ -114,5 +114,5 @@ public class Worker : BackgroundService
 
         consumer.Close();
         _logger.LogInformation("Storage Worker stopped");
-    }
+    }   
 }

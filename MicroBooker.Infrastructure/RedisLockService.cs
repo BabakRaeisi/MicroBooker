@@ -13,6 +13,7 @@ public class RedisLockService : ILockService
     }
     public async Task<bool> AcquireLockAsync(string tableId, string timeSlot, TimeSpan duration)
     {
+        //needs to lock Restaurant+Table+timeslot
       string lockkey = $"lock:table:{tableId}:slot:{timeSlot}";
 
         // Atomically sets a lock key with value "locked" in Redis for the specified duration,

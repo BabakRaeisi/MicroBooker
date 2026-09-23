@@ -59,7 +59,10 @@ public class ReservationService
 
             return null;
         }
-
+//TODO : Todo: Improve reliability with the transactional outbox pattern. 
+// Right now, the reservation is saved before the Kafka event is published.
+//  If publishing fails, the booking can exist even though the API returns an error.
+//  Store the reservation and an outbox event atomically, then publish from a background worker.
         try
         {
             await _eventPublisher.PublishReservationCreatedAsync(

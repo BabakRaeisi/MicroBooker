@@ -39,6 +39,7 @@ builder.Services.AddSingleton<IMongoClient>(_ =>
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IMongoClient>().GetDatabase("BookerDb"));
 builder.Services.AddScoped<IReservationRepository, MongoReservationRepository>();
+builder.Services.AddScoped<IRestaurantRepository, MongoRestaurantRepository>();
 // 3. Register application use-case orchestrator
 builder.Services.AddScoped<ReservationService>();
 
