@@ -42,6 +42,7 @@ builder.Services.AddScoped<IReservationRepository, MongoReservationRepository>()
 builder.Services.AddScoped<IRestaurantRepository, MongoRestaurantRepository>();
 // 3. Register application use-case orchestrator
 builder.Services.AddScoped<ReservationService>();
+builder.Services.AddScoped<RestaurantService>();
 
 builder.Services.AddCors(options =>
 {

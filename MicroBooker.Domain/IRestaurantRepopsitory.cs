@@ -1,7 +1,7 @@
 namespace MicroBooker.Domain;
 public interface IRestaurantRepository
 {
-    Task CreatedAtAsync(Restaurant restaurant,CancellationToken ct = default );
+    Task CreateAsync(Restaurant restaurant,CancellationToken ct = default );
 
     Task<Restaurant>GetByIdAsync(Guid guid , CancellationToken ct = default); 
 

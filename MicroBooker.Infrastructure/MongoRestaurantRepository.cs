@@ -13,7 +13,7 @@ public sealed class MongoRestaurantRepository : IRestaurantRepository
         _restaurants = database.GetCollection<Restaurant>("restaurants");
     }
 
-    public async Task CreatedAtAsync(Restaurant restaurant, CancellationToken ct = default)
+    public async Task CreateAsync(Restaurant restaurant, CancellationToken ct = default)
     {
         await _restaurants.InsertOneAsync(restaurant ,cancellationToken: ct ) ; 
          
