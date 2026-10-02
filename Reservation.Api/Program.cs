@@ -86,6 +86,8 @@ builder.WebHost.UseUrls(
     Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://0.0.0.0:5147");
 
 var app = builder.Build();
+app.UseSwagger();
+app.UseSwaggerUI();
 using (var scope = app.Services.CreateScope())
 {
     var database = scope.ServiceProvider.GetRequiredService<IMongoDatabase>();

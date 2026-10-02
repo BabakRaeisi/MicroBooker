@@ -19,12 +19,12 @@ public sealed class MongoRestaurantRepository : IRestaurantRepository
          
     }
 
-    public async Task<Restaurant> GetByIdAsync(Guid guid, CancellationToken ct = default)
+    public async Task<Restaurant?> GetByIdAsync(Guid guid, CancellationToken ct = default)
     {
        return await _restaurants.Find(r=>r.Id == guid ).FirstOrDefaultAsync(ct) ; 
     }
 
-    public async Task<Restaurant> GetBySlugAsync(string slug, CancellationToken ct = default)
+    public async Task<Restaurant?> GetBySlugAsync(string slug, CancellationToken ct = default)
     {
        return await _restaurants.Find(r =>r.Slug == slug).FirstOrDefaultAsync(ct) ; 
     }

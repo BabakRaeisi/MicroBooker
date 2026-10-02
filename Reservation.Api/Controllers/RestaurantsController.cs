@@ -25,4 +25,18 @@ public class RestaurantsController : ControllerBase
 
         return Ok(restaurant);
     }
+    [HttpGet("{id:guid}")]
+public async Task<IActionResult> GetRestaurantById(
+    Guid id,
+    CancellationToken cancellationToken)
+{
+    var restaurant = await _restaurantService.GetByIdAsync(
+        id,
+        cancellationToken);
+
+    if (restaurant is null)
+        return NotFound();
+
+    return Ok(restaurant);
+}
 }

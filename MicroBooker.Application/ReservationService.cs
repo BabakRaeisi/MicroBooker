@@ -38,8 +38,8 @@ public class ReservationService
         {
             Id = Guid.NewGuid(),
             CustomerId = request.CustomerId,
-            RestaurantId = request.RestaurantId,
-            TableId = request.TableId,
+       RestaurantId = request.RestaurantId,
+TableId = request.TableId,
             TimeSlot = request.TimeSlot,
             PartySize = request.PartySize,
             CreatedAt = DateTime.UtcNow

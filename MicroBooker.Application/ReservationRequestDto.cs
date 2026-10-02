@@ -1,20 +1,12 @@
-using System.ComponentModel.DataAnnotations;
-
-namespace MicroBooker.Application;
-
 public class ReservationRequestDto
 {
     public string CustomerId { get; set; } = string.Empty;
 
-    [Required]
-    public string RestaurantId { get; set; } = string.Empty;
+    public Guid RestaurantId { get; set; }
 
-    [Required]
-    public string TableId { get; set; } = string.Empty;
+    public Guid TableId { get; set; }
 
-    [Required]
     public string TimeSlot { get; set; } = string.Empty;
 
-    [Range(1, 20)]
     public int PartySize { get; set; }
 }

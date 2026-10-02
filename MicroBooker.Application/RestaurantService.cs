@@ -32,4 +32,12 @@ public class RestaurantService
 
         return restaurant;
     }
+    public async Task<Restaurant?> GetByIdAsync(
+    Guid id,
+    CancellationToken cancellationToken = default)
+{
+    return await _restaurantRepository.GetByIdAsync(
+        id,
+        cancellationToken);
+}
 }

@@ -11,14 +11,19 @@ public class RedisLockService : ILockService
     {
         _redisDb = redis.GetDatabase();
     }
-    public async Task<bool> AcquireLockAsync(string tableId, string timeSlot, TimeSpan duration)
-    {
-        //needs to lock Restaurant+Table+timeslot
-      string lockkey = $"lock:table:{tableId}:slot:{timeSlot}";
+    
 
-        // Atomically sets a lock key with value "locked" in Redis for the specified duration,
-        // but only if the key does not already exist (prevents overwriting an active lock)
-        return await _redisDb.StringSetAsync(lockkey, "locked", duration, When.NotExists) ; 
-        
-    }
+public async Task<bool> AcquireLockAsync(
+    Guid tableId,
+    string timeSlot,
+    TimeSpan duration)
+{
+    var key = $"lock:{tableId}:{timeSlot}";
+
+    return await _redisDb.StringSetAsync(
+        key,
+        "locked",
+        duration,
+        When.NotExists);
+}
 }
