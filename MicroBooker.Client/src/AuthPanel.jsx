@@ -137,6 +137,13 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
           </div>
         </div>
 
+        {audience === "partner" && mode === "register" && (
+          <p className="auth-context-note">
+            Create an account for the person who will manage the restaurant.
+            You will add the restaurant name and business details after signing in.
+          </p>
+        )}
+
         <div className="auth-tabs">
           <button
             type="button"
@@ -195,7 +202,9 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
         ) : (
           <form className="auth-form" onSubmit={handleRegister}>
             <label className="field">
-              <span>Name</span>
+              <span>
+                {audience === "partner" ? "Your full name" : "Full name"}
+              </span>
               <input
                 required
                 value={registerForm.personName}
@@ -205,7 +214,11 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
                     personName: event.target.value,
                   })
                 }
-                placeholder="Your name"
+                placeholder={
+                  audience === "partner"
+                    ? "Owner or administrator name"
+                    : "Your name"
+                }
               />
             </label>
             <label className="field">
