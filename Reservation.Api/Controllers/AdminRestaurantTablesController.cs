@@ -1,7 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MicroBooker.Application;
+using Reservation.Api.Extensions;
 
 namespace Reservation.Api.Controllers;
 
@@ -27,28 +27,31 @@ public class AdminRestaurantTablesController : ControllerBase
         [FromBody] CreateRestaurantTableRequestDto request,
         CancellationToken cancellationToken)
     {
-        var userId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("sub") ??
-            User.FindFirstValue("nameid");
+        var userId = User.GetUserId();
 
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        var restaurant = await _restaurantService.GetByIdAsync(
-            restaurantId,
-            cancellationToken);
-
-        if (restaurant is null)
-            return NotFound();
-
-        if (restaurant.OwnerUserId != userId)
+        if (!await _restaurantService.IsOwnerAsync(
+                restaurantId,
+                userId,
+                cancellationToken))
+        {
             return Forbid();
+        }
 
         var table = await _tableService.CreateAsync(
             restaurantId,
             request,
             cancellationToken);
+
+        if (table is null)
+        {
+            return Conflict(new
+            {
+                message = "A table with this number already exists for this restaurant."
+            });
+        }
 
         return Ok(table);
     }
@@ -58,23 +61,18 @@ public class AdminRestaurantTablesController : ControllerBase
         Guid restaurantId,
         CancellationToken cancellationToken)
     {
-        var userId =
-            User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-            User.FindFirstValue("sub") ??
-            User.FindFirstValue("nameid");
+        var userId = User.GetUserId();
 
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized();
 
-        var restaurant = await _restaurantService.GetByIdAsync(
-            restaurantId,
-            cancellationToken);
-
-        if (restaurant is null)
-            return NotFound();
-
-        if (restaurant.OwnerUserId != userId)
+        if (!await _restaurantService.IsOwnerAsync(
+                restaurantId,
+                userId,
+                cancellationToken))
+        {
             return Forbid();
+        }
 
         var tables = await _tableService.GetByRestaurantIdAsync(
             restaurantId,
