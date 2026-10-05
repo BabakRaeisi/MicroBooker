@@ -121,6 +121,8 @@ builder.Services
                 Encoding.UTF8.GetBytes(
                     builder.Configuration["Jwt:Key"]!)),
             ValidateLifetime = true,
+            RoleClaimType = "role",
+            NameClaimType = "name",
             ClockSkew = TimeSpan.Zero
         };
     });
