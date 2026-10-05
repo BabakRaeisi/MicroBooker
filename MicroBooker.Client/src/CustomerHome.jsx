@@ -82,8 +82,14 @@ const CustomerHome = ({ onOpenRestaurant }) => {
           <div className="directory-grid">
             {visibleRestaurants.map((restaurant) => {
               const id = restaurant.id ?? restaurant.Id;
-              const opening = restaurant.openingTime ?? restaurant.OpeningTime;
-              const closing = restaurant.closingTime ?? restaurant.ClosingTime;
+              const operatingHours =
+                restaurant.operatingHours ?? restaurant.OperatingHours ?? [];
+              const todayName = new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+              });
+              const todayHours = operatingHours.find(
+                (item) => (item.dayOfWeek ?? item.DayOfWeek) === todayName,
+              );
 
               return (
                 <article className="restaurant-card" key={id}>
@@ -101,9 +107,22 @@ const CustomerHome = ({ onOpenRestaurant }) => {
                     </p>
                     <p>
                       <FiClock />
-                      {formatClock((opening || "").slice(0, 5))}
-                      {" – "}
-                      {formatClock((closing || "").slice(0, 5))}
+                      {todayHours
+                        ? "Today " +
+                          formatClock(
+                            (
+                              todayHours.openingTime ??
+                              todayHours.OpeningTime
+                            ).slice(0, 5),
+                          ) +
+                          " – " +
+                          formatClock(
+                            (
+                              todayHours.closingTime ??
+                              todayHours.ClosingTime
+                            ).slice(0, 5),
+                          )
+                        : "Closed today"}
                     </p>
                     <button
                       type="button"
