@@ -63,10 +63,18 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowLocalClient", policy =>
     {
-        policy.WithOrigins(
-                "http://localhost:5173",
-                "http://localhost:4200",
-                "https://microbooker.babakraeisi.com")
+        policy.SetIsOriginAllowed(origin =>
+            {
+                if (origin == "https://microbooker.babakraeisi.com")
+                    return true;
+
+                return Uri.TryCreate(
+                           origin,
+                           UriKind.Absolute,
+                           out var uri) &&
+                       (uri.Host == "localhost" ||
+                        uri.Host == "127.0.0.1");
+            })
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
