@@ -14,6 +14,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 builder.Services
     .AddControllers()
     .AddJsonOptions(options =>
@@ -162,7 +164,9 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors("AllowLocalClient");
 
-app.MapGet("/health", () => Results.Ok("Healthy"));
+app.MapDefaultEndpoints();
+
+// Legacy alias kept for existing local/deployment checks.
 app.MapGet("/live", () => Results.Ok("ok"));
 
 app.UseForwardedHeaders(new ForwardedHeadersOptions
