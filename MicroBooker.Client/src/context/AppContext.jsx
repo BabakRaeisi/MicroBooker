@@ -24,7 +24,6 @@ import {
 
 const AppContext = createContext(null);
 const DEFAULT_RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || "";
-const AVAILABILITY_REFRESH_MS = 10000;
 
 const apiMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -149,7 +148,7 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const refreshBooking = useCallback(
-    async (showError = true) => {
+    async (showError = true, showLoading = false) => {
       if (!bookingRestaurantId) {
         setRestaurant(null);
         setTables([]);
@@ -158,8 +157,9 @@ export const AppProvider = ({ children }) => {
         return;
       }
 
+      if (showLoading) setBookingLoading(true);
+
       try {
-        setBookingLoading(true);
         const [restaurantData, tableData, availabilityData] = await Promise.all([
           getRestaurantById(bookingRestaurantId),
           getRestaurantTables(bookingRestaurantId),
@@ -170,26 +170,16 @@ export const AppProvider = ({ children }) => {
         setTables(Array.isArray(tableData) ? tableData : []);
         setAvailability(Array.isArray(availabilityData) ? availabilityData : []);
       } catch (error) {
-        setRestaurant(null);
-        setTables([]);
-        setAvailability([]);
         if (showError) toast.error(apiMessage(error, "Could not load restaurant"));
       } finally {
-        setBookingLoading(false);
+        if (showLoading) setBookingLoading(false);
       }
     },
     [bookingRestaurantId],
   );
 
   useEffect(() => {
-    void refreshBooking();
-
-    const id = window.setInterval(
-      () => void refreshBooking(false),
-      AVAILABILITY_REFRESH_MS,
-    );
-
-    return () => window.clearInterval(id);
+    void refreshBooking(true, true);
   }, [refreshBooking]);
 
   const occupiedSlots = useMemo(
@@ -240,7 +230,7 @@ export const AppProvider = ({ children }) => {
       try {
         const reservation = await createReservation(payload);
         toast.success("Reservation created. Status: Pending");
-        await refreshBooking(false);
+        await refreshBooking(false, false);
         return reservation;
       } catch (error) {
         throw new Error(apiMessage(error, "Reservation failed"));
@@ -323,7 +313,7 @@ export const AppProvider = ({ children }) => {
         await Promise.all([
           loadAdminRestaurant(adminRestaurantId, false),
           bookingRestaurantId === adminRestaurantId
-            ? refreshBooking(false)
+            ? refreshBooking(false, false)
             : Promise.resolve(),
         ]);
         toast.success(`Table ${created.tableNumber ?? created.TableNumber} added`);
@@ -360,7 +350,7 @@ export const AppProvider = ({ children }) => {
         );
 
         if (bookingRestaurantId === adminRestaurantId) {
-          await refreshBooking(false);
+          await refreshBooking(false, false);
         }
 
         toast.success(`Reservation marked ${status}`);
