@@ -1,5 +1,6 @@
 using MicroBooker.Application;
 using MicroBooker.Domain;
+using ReservationDocument = MicroBooker.Domain.Reservation;
 using MicroBooker.Infrastructure;
 using StackExchange.Redis;
 using MongoDB.Driver;
@@ -123,16 +124,16 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<IMongoDatabase>();
 
     var reservations =
-        database.GetCollection<Reservation>("reservations");
+        database.GetCollection<ReservationDocument>("reservations");
 
     var reservationKeys =
-        Builders<Reservation>.IndexKeys
+        Builders<ReservationDocument>.IndexKeys
             .Ascending(x => x.RestaurantId)
             .Ascending(x => x.TableId)
             .Ascending(x => x.TimeSlot);
 
     await reservations.Indexes.CreateOneAsync(
-        new CreateIndexModel<Reservation>(
+        new CreateIndexModel<ReservationDocument>(
             reservationKeys,
             new CreateIndexOptions
             {
