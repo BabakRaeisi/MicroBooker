@@ -6,7 +6,7 @@ using Reservation.Api.Extensions;
 namespace Reservation.Api.Controllers;
 
 [ApiController]
-[Authorize]
+[Authorize(Roles = "Partner")]
 [Route("api/admin/restaurants/{restaurantId:guid}/reservations")]
 public class AdminReservationsController : ControllerBase
 {
