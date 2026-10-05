@@ -2,8 +2,12 @@ import "@vitejs/plugin-react/preamble";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import ErrorBoundary from "./ErrorBoundary";
+import DiagnosticsProfiler from "./DiagnosticsProfiler";
+import { initDiagnostics } from "./diagnostics";
 
 const rootElement = document.getElementById("root");
+
+initDiagnostics();
 
 const showStartupError = (error) => {
   console.error("MicroBooker startup error:", error);
@@ -30,11 +34,13 @@ try {
   ]);
 
   ReactDOM.createRoot(rootElement).render(
-    <ErrorBoundary>
-      <AppProvider>
-        <App />
-      </AppProvider>
-    </ErrorBoundary>,
+    <DiagnosticsProfiler>
+      <ErrorBoundary>
+        <AppProvider>
+          <App />
+        </AppProvider>
+      </ErrorBoundary>
+    </DiagnosticsProfiler>,
   );
 } catch (error) {
   showStartupError(error);
