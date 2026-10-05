@@ -188,51 +188,7 @@ using (var scope = app.Services.CreateScope())
                 Name = "ux_restaurant_table_number"
             }));
 
-    if (app.Environment.IsDevelopment())
-    {
-        var demoRestaurantId =
-            Guid.Parse("3c59cb69-b280-464f-8f42-3f9866955fb8");
 
-        var demoRestaurantExists = await restaurants
-            .Find(x => x.Id == demoRestaurantId)
-            .AnyAsync();
-
-        if (!demoRestaurantExists)
-        {
-            await restaurants.InsertOneAsync(
-                new Restaurant
-                {
-                    Id = demoRestaurantId,
-                    Name = "Aspire Test Restaurant",
-                    Slug = "aspire-test-restaurant-1",
-                    Address = "100 Test Street",
-                    Phone = "+14165551234",
-                    OpeningTime = new TimeOnly(10, 0),
-                    ClosingTime = new TimeOnly(23, 0),
-                    OwnerUserId = "development-seed"
-                });
-        }
-
-        var demoTableId =
-            Guid.Parse("fa18b0ab-52cc-4e13-abb2-e5061e384eed");
-
-        var demoTableExists = await tables
-            .Find(x => x.Id == demoTableId)
-            .AnyAsync();
-
-        if (!demoTableExists)
-        {
-            await tables.InsertOneAsync(
-                new RestaurantTable
-                {
-                    Id = demoTableId,
-                    RestaurantId = demoRestaurantId,
-                    TableNumber = 1,
-                    Capacity = 4,
-                    IsActive = true
-                });
-        }
-    }
 }
 
 app.UseCors("AllowLocalClient");
