@@ -109,6 +109,7 @@ builder.Services
     .AddJwtBearer(options =>
     {
         options.RequireHttpsMetadata = false;
+        options.MapInboundClaims = false;
 
         options.TokenValidationParameters = new TokenValidationParameters
         {
