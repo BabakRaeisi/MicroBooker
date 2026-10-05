@@ -1,32 +1,72 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Header from "./Header";
+import CustomerHome from "./CustomerHome";
 import BookingView from "./BookingView";
 import AdminView from "./AdminView";
 import AuthPanel from "./AuthPanel";
 
 const App = () => {
-  const [view, setView] = useState("booking");
-  const [showAuth, setShowAuth] = useState(false);
+  const [path, setPath] = useState(window.location.pathname);
+  const [authAudience, setAuthAudience] = useState(null);
+
+  useEffect(() => {
+    const handlePopState = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = (nextPath) => {
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+    setPath(nextPath);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const restaurantId = useMemo(() => {
+    const match = path.match(/^\/restaurant\/([0-9a-f-]{36})$/i);
+    return match?.[1] || "";
+  }, [path]);
+
+  const isPartnerPortal = path.startsWith("/admin");
 
   return (
     <div className="app-shell">
       <Header
-        view={view}
-        onViewChange={setView}
-        onAuthOpen={() => setShowAuth(true)}
+        portal={isPartnerPortal ? "partner" : "customer"}
+        onNavigate={navigate}
+        onAuthOpen={() =>
+          setAuthAudience(isPartnerPortal ? "partner" : "customer")
+        }
       />
 
       <main className="app-main">
-        {view === "booking" ? (
-          <BookingView onAuthOpen={() => setShowAuth(true)} />
+        {isPartnerPortal ? (
+          <AdminView
+            onAuthOpen={() => setAuthAudience("partner")}
+            onViewRestaurant={(id) => navigate("/restaurant/" + id)}
+          />
+        ) : restaurantId ? (
+          <BookingView
+            restaurantId={restaurantId}
+            onBack={() => navigate("/")}
+            onAuthOpen={() => setAuthAudience("customer")}
+          />
         ) : (
-          <AdminView onAuthOpen={() => setShowAuth(true)} />
+          <CustomerHome
+            onOpenRestaurant={(id) => navigate("/restaurant/" + id)}
+          />
         )}
       </main>
 
-      {showAuth && <AuthPanel onClose={() => setShowAuth(false)} />}
+      {authAudience && (
+        <AuthPanel
+          audience={authAudience}
+          onClose={() => setAuthAudience(null)}
+        />
+      )}
 
       <ToastContainer
         position="bottom-right"
