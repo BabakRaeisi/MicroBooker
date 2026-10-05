@@ -17,5 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MicroBooker.Domain\MicroBooker.Domain.csproj" />
     <ProjectReference Include="..\MicroBooker.Application\MicroBooker.Application.csproj" />
+    <ProjectReference Include="..\MicroBooker.ServiceDefaults\MicroBooker.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>
