@@ -40,10 +40,11 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IMongoClient>().GetDatabase("BookerDb"));
 builder.Services.AddScoped<IReservationRepository, MongoReservationRepository>();
 builder.Services.AddScoped<IRestaurantRepository, MongoRestaurantRepository>();
+builder.Services.AddScoped<IRestaurantTableRepository, MongoRestaurantTableRepository>();
 // 3. Register application use-case orchestrator
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<RestaurantService>();
-
+builder.Services.AddScoped<RestaurantTableService>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowLocalClient", policy =>

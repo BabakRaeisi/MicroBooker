@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using MicroBooker.Application;
  
-using MongoDB.Driver;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 
@@ -12,31 +11,28 @@ namespace Reservation.Api.Controllers;
 public class ReservationsController : ControllerBase
 {
     private readonly ReservationService _reservationService;
-    private readonly IMongoCollection<MicroBooker.Domain.Reservation> _reservations;
+   
 
-    public ReservationsController(ReservationService reservationService, IMongoDatabase database)
+    public ReservationsController(ReservationService reservationService )
     {
         _reservationService = reservationService;
-        _reservations = database.GetCollection<MicroBooker.Domain.Reservation>("reservations");
+     
     }
 
     [AllowAnonymous]
     [HttpGet]
     public async Task<IActionResult> GetReservations()
     {
-        var docs = await _reservations
-            .Find(Builders<MicroBooker.Domain.Reservation>.Filter.Empty)
-            .SortByDescending(x => x.CreatedAt)
-            .ToListAsync();
+  var reservations = await _reservationService.GetAllAsync(
+    HttpContext.RequestAborted);
 
-        return Ok(docs);
+return Ok(reservations);
     }
 
-    [Authorize]
-    [HttpPost]
-    public async Task<IActionResult> PostReservation(
-        [FromBody] ReservationRequestDto request,
-        [FromServices] ReservationService reservationService)
+[Authorize]
+[HttpPost]
+public async Task<IActionResult> PostReservation(
+    [FromBody] ReservationRequestDto request)
     {
         var customerId =
             User.FindFirstValue(ClaimTypes.NameIdentifier) ??
@@ -49,11 +45,35 @@ public class ReservationsController : ControllerBase
 
         request.CustomerId = customerId; // enforce from JWT, ignore client-sent value
 
-        var result = await reservationService.BookTableAsync(request, HttpContext.RequestAborted);
+    var result = await _reservationService.BookTableAsync(
+    request,
+    HttpContext.RequestAborted);
 
-        if (result is null)
-            return Conflict(new { message = "Slot is locked or already booked." });
+if (result.IsSuccess)
+    return Accepted(result.Reservation);
 
-        return Accepted(result);
+return result.FailureReason switch
+{
+    BookingFailureReason.TableNotFound =>
+        NotFound(new { message = "Table not found." }),
+
+    BookingFailureReason.TableDoesNotBelongToRestaurant =>
+        BadRequest(new { message = "Table does not belong to this restaurant." }),
+
+    BookingFailureReason.TableInactive =>
+        Conflict(new { message = "Table is inactive." }),
+
+    BookingFailureReason.PartyTooLarge =>
+        BadRequest(new { message = "Party size exceeds table capacity." }),
+
+    BookingFailureReason.SlotLocked =>
+        Conflict(new { message = "This table is currently being booked." }),
+
+    BookingFailureReason.AlreadyBooked =>
+        Conflict(new { message = "This table is already booked for that time slot." }),
+
+    _ =>
+        StatusCode(500, new { message = "Unknown booking error." })
+};
     }
 }

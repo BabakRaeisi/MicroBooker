@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MicroBooker.Application;
+using System.Security.Claims ; 
+using Microsoft.AspNetCore.Authorization; 
 
 namespace Reservation.Api.Controllers;
 
@@ -13,18 +15,27 @@ public class RestaurantsController : ControllerBase
     {
         _restaurantService = restaurantService;
     }
+    [Authorize]
+[HttpPost]
+public async Task<IActionResult> CreateRestaurant(
+    [FromBody] CreateRestaurantRequestDto request,
+    CancellationToken cancellationToken)
+{
+    var ownerUserId =
+        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+        User.FindFirstValue("sub") ??
+        User.FindFirstValue("nameid");
 
-    [HttpPost]
-    public async Task<IActionResult> CreateRestaurant(
-        [FromBody] CreateRestaurantRequestDto request,
-        CancellationToken cancellationToken)
-    {
-        var restaurant = await _restaurantService.CreateAsync(
-            request,
-            cancellationToken);
+    if (string.IsNullOrWhiteSpace(ownerUserId))
+        return Unauthorized(new { message = "Missing user id claim in token." });
 
-        return Ok(restaurant);
-    }
+    var restaurant = await _restaurantService.CreateAsync(
+        request,
+        ownerUserId,
+        cancellationToken);
+
+    return Ok(restaurant);
+}
     [HttpGet("{id:guid}")]
 public async Task<IActionResult> GetRestaurantById(
     Guid id,

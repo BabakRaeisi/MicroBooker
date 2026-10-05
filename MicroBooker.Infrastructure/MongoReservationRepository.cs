@@ -12,6 +12,13 @@ public sealed class MongoReservationRepository : IReservationRepository
         _reservations = database.GetCollection<Reservation>("reservations");
     }
 
+    public async Task<IReadOnlyList<Reservation>> GetByRestaurantIdAsync(Guid restaurantId, CancellationToken cancellationToken = default)
+    {
+     
+           return await _reservations.Find(r=>r.RestaurantId == restaurantId).ToListAsync(cancellationToken) ; 
+     
+    }
+
     public async Task<bool> TryCreateAsync(
         Reservation reservation,
         CancellationToken cancellationToken = default)
@@ -31,4 +38,12 @@ public sealed class MongoReservationRepository : IReservationRepository
             return false;
         }
     }
+    public async Task<IReadOnlyList<Reservation>> GetAllAsync(
+    CancellationToken cancellationToken = default)
+{
+    return await _reservations
+        .Find(Builders<Reservation>.Filter.Empty)
+        .SortByDescending(r => r.CreatedAt)
+        .ToListAsync(cancellationToken);
+}
 }
