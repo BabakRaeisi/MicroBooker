@@ -12,8 +12,10 @@ import {
   createAdminTable,
   createRestaurant,
   getAdminTables,
+  getOwnedRestaurants,
   getRestaurantAvailability,
   getRestaurantById,
+  getRestaurants,
   getRestaurantTables,
 } from "../api/restaurantsApi";
 import {
@@ -23,7 +25,6 @@ import {
 } from "../api/reservationsApi";
 
 const AppContext = createContext(null);
-const DEFAULT_RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || "";
 
 const apiMessage = (error, fallback) =>
   error?.response?.data?.message ||
@@ -73,6 +74,7 @@ export const formatClock = (value) => {
   if (!value) return "";
   const [hours, minutes] = value.split(":").map(Number);
   const date = new Date(2000, 0, 1, hours, minutes);
+
   return date.toLocaleTimeString("en-CA", {
     hour: "numeric",
     minute: "2-digit",
@@ -116,35 +118,35 @@ export const AppProvider = ({ children }) => {
     storedUserId ? { id: storedUserId, name: storedName, email: "" } : null,
   );
 
-  const [bookingRestaurantId, setBookingRestaurantIdState] = useState(
-    localStorage.getItem("booking_restaurant_id") || DEFAULT_RESTAURANT_ID,
-  );
-  const [adminRestaurantId, setAdminRestaurantIdState] = useState(
-    localStorage.getItem("admin_restaurant_id") || DEFAULT_RESTAURANT_ID,
-  );
+  const [restaurantDirectory, setRestaurantDirectory] = useState([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
 
+  const [bookingRestaurantId, setBookingRestaurantId] = useState("");
   const [restaurant, setRestaurant] = useState(null);
   const [tables, setTables] = useState([]);
   const [availability, setAvailability] = useState([]);
-  const [bookingLoading, setBookingLoading] = useState(true);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
+  const [ownedRestaurants, setOwnedRestaurants] = useState([]);
+  const [ownedRestaurantsLoading, setOwnedRestaurantsLoading] = useState(false);
+  const [adminRestaurantId, setAdminRestaurantId] = useState("");
   const [adminRestaurant, setAdminRestaurant] = useState(null);
   const [adminTables, setAdminTables] = useState([]);
   const [adminReservations, setAdminReservations] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);
 
-  const setBookingRestaurantId = useCallback((restaurantId) => {
-    const value = restaurantId?.trim() || "";
-    setBookingRestaurantIdState(value);
-    if (value) localStorage.setItem("booking_restaurant_id", value);
-    else localStorage.removeItem("booking_restaurant_id");
-  }, []);
-
-  const setAdminRestaurantId = useCallback((restaurantId) => {
-    const value = restaurantId?.trim() || "";
-    setAdminRestaurantIdState(value);
-    if (value) localStorage.setItem("admin_restaurant_id", value);
-    else localStorage.removeItem("admin_restaurant_id");
+  const loadRestaurantDirectory = useCallback(async (showError = true) => {
+    try {
+      setDirectoryLoading(true);
+      const data = await getRestaurants();
+      setRestaurantDirectory(Array.isArray(data) ? data : []);
+    } catch (error) {
+      if (showError) {
+        toast.error(apiMessage(error, "Could not load restaurants"));
+      }
+    } finally {
+      setDirectoryLoading(false);
+    }
   }, []);
 
   const refreshBooking = useCallback(
@@ -170,7 +172,9 @@ export const AppProvider = ({ children }) => {
         setTables(Array.isArray(tableData) ? tableData : []);
         setAvailability(Array.isArray(availabilityData) ? availabilityData : []);
       } catch (error) {
-        if (showError) toast.error(apiMessage(error, "Could not load restaurant"));
+        if (showError) {
+          toast.error(apiMessage(error, "Could not load restaurant"));
+        }
       } finally {
         if (showLoading) setBookingLoading(false);
       }
@@ -179,8 +183,10 @@ export const AppProvider = ({ children }) => {
   );
 
   useEffect(() => {
-    void refreshBooking(true, true);
-  }, [refreshBooking]);
+    if (bookingRestaurantId) {
+      void refreshBooking(true, true);
+    }
+  }, [bookingRestaurantId, refreshBooking]);
 
   const occupiedSlots = useMemo(
     () =>
@@ -196,7 +202,6 @@ export const AppProvider = ({ children }) => {
             tableId: String(tableId),
             date: localDateKey(date),
             time: localTimeKey(date),
-            status: reservation.status ?? reservation.Status,
           };
         })
         .filter(Boolean),
@@ -217,18 +222,17 @@ export const AppProvider = ({ children }) => {
   const bookTable = useCallback(
     async ({ tableId, date, time, partySize }) => {
       if (!isLoggedIn) {
-        throw new Error("Please log in before making a reservation.");
+        throw new Error("Please sign in before making a reservation.");
       }
 
-      const payload = {
-        restaurantId: bookingRestaurantId,
-        tableId,
-        timeSlot: toDateTimeOffset(date, time),
-        partySize: Number(partySize),
-      };
-
       try {
-        const reservation = await createReservation(payload);
+        const reservation = await createReservation({
+          restaurantId: bookingRestaurantId,
+          tableId,
+          timeSlot: toDateTimeOffset(date, time),
+          partySize: Number(partySize),
+        });
+
         toast.success("Reservation created. Status: Pending");
         await refreshBooking(false, false);
         return reservation;
@@ -239,10 +243,34 @@ export const AppProvider = ({ children }) => {
     [bookingRestaurantId, isLoggedIn, refreshBooking],
   );
 
+  const loadOwnedRestaurants = useCallback(async (showError = true) => {
+    if (!localStorage.getItem("access_token")) {
+      setOwnedRestaurants([]);
+      return [];
+    }
+
+    try {
+      setOwnedRestaurantsLoading(true);
+      const data = await getOwnedRestaurants();
+      const restaurants = Array.isArray(data) ? data : [];
+      setOwnedRestaurants(restaurants);
+      return restaurants;
+    } catch (error) {
+      if (showError) {
+        toast.error(apiMessage(error, "Could not load your restaurants"));
+      }
+      return [];
+    } finally {
+      setOwnedRestaurantsLoading(false);
+    }
+  }, []);
+
   const loadAdminRestaurant = useCallback(
-    async (restaurantId = adminRestaurantId, showError = true) => {
+    async (restaurantId, showError = true) => {
       const id = restaurantId?.trim();
+
       if (!id) {
+        setAdminRestaurantId("");
         setAdminRestaurant(null);
         setAdminTables([]);
         setAdminReservations([]);
@@ -251,8 +279,9 @@ export const AppProvider = ({ children }) => {
 
       try {
         setAdminLoading(true);
-        const restaurantData = await getRestaurantById(id);
-        const [tableData, reservationData] = await Promise.all([
+
+        const [restaurantData, tableData, reservationData] = await Promise.all([
+          getRestaurantById(id),
           getAdminTables(id),
           getAdminReservations(id),
         ]);
@@ -263,17 +292,15 @@ export const AppProvider = ({ children }) => {
         setAdminReservations(
           Array.isArray(reservationData) ? reservationData : [],
         );
+
         return true;
       } catch (error) {
-        setAdminRestaurant(null);
-        setAdminTables([]);
-        setAdminReservations([]);
         if (showError) {
           const status = error?.response?.status;
           toast.error(
             status === 403
-              ? "This restaurant exists, but the signed-in user is not its owner."
-              : apiMessage(error, "Could not load admin restaurant"),
+              ? "You do not own this restaurant."
+              : apiMessage(error, "Could not load restaurant management data"),
           );
         }
         return false;
@@ -281,7 +308,7 @@ export const AppProvider = ({ children }) => {
         setAdminLoading(false);
       }
     },
-    [adminRestaurantId, setAdminRestaurantId],
+    [],
   );
 
   const createOwnedRestaurant = useCallback(
@@ -289,34 +316,38 @@ export const AppProvider = ({ children }) => {
       try {
         const created = await createRestaurant(payload);
         const id = created.id ?? created.Id;
-        setAdminRestaurantId(id);
-        setBookingRestaurantId(id);
-        setAdminRestaurant(created);
-        setRestaurant(created);
-        setAdminTables([]);
-        setAdminReservations([]);
+
+        setOwnedRestaurants((current) => [...current, created]);
+        await loadAdminRestaurant(id, false);
+        await loadRestaurantDirectory(false);
+
         toast.success("Restaurant created");
         return created;
       } catch (error) {
         throw new Error(apiMessage(error, "Could not create restaurant"));
       }
     },
-    [setAdminRestaurantId, setBookingRestaurantId],
+    [loadAdminRestaurant, loadRestaurantDirectory],
   );
 
   const addAdminTable = useCallback(
     async (payload) => {
-      if (!adminRestaurantId) throw new Error("Load a restaurant first.");
+      if (!adminRestaurantId) {
+        throw new Error("Select a restaurant first.");
+      }
 
       try {
         const created = await createAdminTable(adminRestaurantId, payload);
-        await Promise.all([
-          loadAdminRestaurant(adminRestaurantId, false),
-          bookingRestaurantId === adminRestaurantId
-            ? refreshBooking(false, false)
-            : Promise.resolve(),
-        ]);
-        toast.success(`Table ${created.tableNumber ?? created.TableNumber} added`);
+        await loadAdminRestaurant(adminRestaurantId, false);
+
+        if (bookingRestaurantId === adminRestaurantId) {
+          await refreshBooking(false, false);
+        }
+
+        toast.success(
+          `Table ${created.tableNumber ?? created.TableNumber} added`,
+        );
+
         return created;
       } catch (error) {
         throw new Error(apiMessage(error, "Could not create table"));
@@ -365,9 +396,13 @@ export const AppProvider = ({ children }) => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_name");
     localStorage.removeItem("user_id");
+
     setIsLoggedIn(false);
     setUserName("");
     setCurrentUser(null);
+
+    setOwnedRestaurants([]);
+    setAdminRestaurantId("");
     setAdminRestaurant(null);
     setAdminTables([]);
     setAdminReservations([]);
@@ -382,6 +417,10 @@ export const AppProvider = ({ children }) => {
     setCurrentUser,
     handleLogout,
 
+    restaurantDirectory,
+    directoryLoading,
+    loadRestaurantDirectory,
+
     bookingRestaurantId,
     setBookingRestaurantId,
     restaurant,
@@ -392,8 +431,10 @@ export const AppProvider = ({ children }) => {
     isSlotOccupied,
     bookTable,
 
+    ownedRestaurants,
+    ownedRestaurantsLoading,
+    loadOwnedRestaurants,
     adminRestaurantId,
-    setAdminRestaurantId,
     adminRestaurant,
     adminTables,
     adminReservations,
@@ -409,6 +450,10 @@ export const AppProvider = ({ children }) => {
 
 export const useAppContext = () => {
   const context = useContext(AppContext);
-  if (!context) throw new Error("useAppContext must be used inside AppProvider");
+
+  if (!context) {
+    throw new Error("useAppContext must be used inside AppProvider");
+  }
+
   return context;
 };
