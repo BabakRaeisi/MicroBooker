@@ -10,10 +10,17 @@ namespace Reservation.Api.Controllers;
 public class RestaurantsController : ControllerBase
 {
     private readonly RestaurantService _restaurantService;
+    private readonly RestaurantTableService _tableService;
+    private readonly ReservationService _reservationService;
 
-    public RestaurantsController(RestaurantService restaurantService)
+    public RestaurantsController(
+        RestaurantService restaurantService,
+        RestaurantTableService tableService,
+        ReservationService reservationService)
     {
         _restaurantService = restaurantService;
+        _tableService = tableService;
+        _reservationService = reservationService;
     }
 
     [Authorize]
@@ -70,5 +77,58 @@ public class RestaurantsController : ControllerBase
             restaurant.OpeningTime,
             restaurant.ClosingTime
         });
+    }
+
+    [HttpGet("{id:guid}/tables")]
+    public async Task<IActionResult> GetPublicTables(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _restaurantService.GetByIdAsync(
+            id,
+            cancellationToken);
+
+        if (restaurant is null)
+            return NotFound();
+
+        var tables = await _tableService.GetByRestaurantIdAsync(
+            id,
+            cancellationToken);
+
+        return Ok(
+            tables
+                .Where(table => table.IsActive)
+                .Select(table => new
+                {
+                    table.Id,
+                    table.RestaurantId,
+                    table.TableNumber,
+                    table.Capacity
+                }));
+    }
+
+    [HttpGet("{id:guid}/availability")]
+    public async Task<IActionResult> GetAvailability(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _restaurantService.GetByIdAsync(
+            id,
+            cancellationToken);
+
+        if (restaurant is null)
+            return NotFound();
+
+        var reservations = await _reservationService.GetByRestaurantIdAsync(
+            id,
+            cancellationToken);
+
+        return Ok(
+            reservations.Select(reservation => new
+            {
+                reservation.TableId,
+                reservation.TimeSlot,
+                reservation.Status
+            }));
     }
 }
