@@ -51,4 +51,23 @@ public sealed class MongoRestaurantRepository : IRestaurantRepository
             .Find(r => r.Slug == normalizedSlug)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Restaurant>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _restaurants
+            .Find(FilterDefinition<Restaurant>.Empty)
+            .SortBy(r => r.Name)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Restaurant>> GetByOwnerUserIdAsync(
+        string ownerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _restaurants
+            .Find(r => r.OwnerUserId == ownerUserId)
+            .SortBy(r => r.Name)
+            .ToListAsync(cancellationToken);
+    }
 }
