@@ -1,10 +1,10 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-var redis = builder.AddRedis("Redis");
+var redis = builder.AddRedis("redis");
 
-var mongo = builder.AddMongoDB("Mongo");
+var mongo = builder.AddMongoDB("mongo");
 
-var kafka = builder.AddKafka("Kafka");
+var kafka = builder.AddKafka("kafka");
 
 var reservationApi = builder
     .AddProject<Projects.Reservation_Api>("reservation-api")
