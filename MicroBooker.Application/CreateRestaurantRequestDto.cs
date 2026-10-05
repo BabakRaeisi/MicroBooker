@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace MicroBooker.Application;
 
-public class CreateRestaurantRequestDto
+public class CreateRestaurantRequestDto : IValidatableObject
 {
     [Required]
     [MaxLength(100)]
@@ -15,7 +15,7 @@ public class CreateRestaurantRequestDto
         ErrorMessage = "Slug can only contain lowercase letters, numbers, and hyphens.")]
     public string Slug { get; set; } = string.Empty;
 
-   [Required]
+    [Required]
     [MaxLength(200)]
     public string Address { get; set; } = string.Empty;
 
@@ -26,4 +26,14 @@ public class CreateRestaurantRequestDto
     public TimeOnly OpeningTime { get; set; }
 
     public TimeOnly ClosingTime { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (OpeningTime == ClosingTime)
+        {
+            yield return new ValidationResult(
+                "Opening and closing times cannot be the same.",
+                new[] { nameof(OpeningTime), nameof(ClosingTime) });
+        }
+    }
 }
