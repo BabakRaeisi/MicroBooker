@@ -1,4 +1,4 @@
-using MicroBooker.Domain ; 
+using MicroBooker.Domain;
 using StackExchange.Redis;
 
 namespace MicroBooker.Infrastructure;
@@ -11,19 +11,21 @@ public class RedisLockService : ILockService
     {
         _redisDb = redis.GetDatabase();
     }
-    
 
-public async Task<bool> AcquireLockAsync(
-    Guid tableId,
-    string timeSlot,
-    TimeSpan duration)
-{
-    var key = $"lock:{tableId}:{timeSlot}";
+    public async Task<bool> AcquireLockAsync(
+        Guid tableId,
+        DateTimeOffset timeSlot,
+        TimeSpan duration)
+    {
+        var normalizedTimeSlot =
+            timeSlot.ToUniversalTime().ToString("O");
 
-    return await _redisDb.StringSetAsync(
-        key,
-        "locked",
-        duration,
-        When.NotExists);
-}
+        var key = $"lock:{tableId}:{normalizedTimeSlot}";
+
+        return await _redisDb.StringSetAsync(
+            key,
+            "locked",
+            duration,
+            When.NotExists);
+    }
 }
