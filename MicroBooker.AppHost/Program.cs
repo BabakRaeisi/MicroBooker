@@ -28,6 +28,7 @@ builder
 builder
     .AddViteApp("client", "../MicroBooker.Client")
     .WithReference(reservationApi)
+    .WithEnvironment("NODE_ENV", "development")
     .WithEnvironment(
         "VITE_API_BASE_URL",
         reservationApi.GetEndpoint("http"))
