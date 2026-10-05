@@ -1,4 +1,4 @@
-using MicroBooker.Domain ; 
+using MicroBooker.Domain;
 using StackExchange.Redis;
 
 namespace MicroBooker.Infrastructure;
@@ -11,13 +11,21 @@ public class RedisLockService : ILockService
     {
         _redisDb = redis.GetDatabase();
     }
-    public async Task<bool> AcquireLockAsync(string tableId, string timeSlot, TimeSpan duration)
-    {
-      string lockkey = $"lock:table:{tableId}:slot:{timeSlot}";
 
-        // Atomically sets a lock key with value "locked" in Redis for the specified duration,
-        // but only if the key does not already exist (prevents overwriting an active lock)
-        return await _redisDb.StringSetAsync(lockkey, "locked", duration, When.NotExists) ; 
-        
+    public async Task<bool> AcquireLockAsync(
+        Guid tableId,
+        DateTimeOffset timeSlot,
+        TimeSpan duration)
+    {
+        var normalizedTimeSlot =
+            timeSlot.ToUniversalTime().ToString("O");
+
+        var key = $"lock:{tableId}:{normalizedTimeSlot}";
+
+        return await _redisDb.StringSetAsync(
+            key,
+            "locked",
+            duration,
+            When.NotExists);
     }
 }

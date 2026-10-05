@@ -1,4 +1,4 @@
-import restaurantTables from "./tablesData";
+import { MdTableRestaurant } from "react-icons/md";
 import { useAppContext } from "./context/AppContext";
 
 const tableLayout = [
@@ -11,16 +11,39 @@ const tableLayout = [
 ];
 
 const Tables = () => {
-  const { selectedTableId, handleSelectTable, isTableBooked, selectedTime } =
-    useAppContext();
+  const {
+    restaurantTables,
+    isLoadingTables,
+    selectedTableId,
+    handleSelectTable,
+    isTableBooked,
+    selectedTime,
+  } = useAppContext();
+
   const visibleTables = restaurantTables.slice(0, tableLayout.length);
+
+  if (isLoadingTables) {
+    return (
+      <section className="restaurant-floor">
+        <p>Loading tables...</p>
+      </section>
+    );
+  }
+
+  if (visibleTables.length === 0) {
+    return (
+      <section className="restaurant-floor">
+        <p>No active tables are configured for this restaurant.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="restaurant-floor">
       {visibleTables.map((table, index) => {
         const position = tableLayout[index];
         const isActive = selectedTableId === table.id;
-        const isBooked = isTableBooked(table.tableNumber); // only true when a time is selected
+        const isBooked = isTableBooked(table.id);
 
         return (
           <button
@@ -32,14 +55,14 @@ const Tables = () => {
             disabled={isBooked}
             title={
               isBooked && selectedTime
-                ? `${table.tableNumber} is booked at ${selectedTime}`
-                : `${table.tableNumber} • ${table.capacity} seats`
+                ? `Table ${table.tableNumber} is booked at ${selectedTime}`
+                : `Table ${table.tableNumber} • ${table.capacity} seats`
             }
           >
-            <span className="table-icon">{table.icon}</span>
-            <span className="table-number">
-              {table.tableNumber.replaceAll("_", " ")}
+            <span className="table-icon">
+              <MdTableRestaurant />
             </span>
+            <span className="table-number">Table {table.tableNumber}</span>
             <span className="table-capacity">{table.capacity} seats</span>
           </button>
         );

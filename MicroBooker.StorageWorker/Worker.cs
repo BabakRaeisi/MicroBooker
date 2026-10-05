@@ -13,46 +13,74 @@ public class Worker : BackgroundService
     private readonly IDatabase? _redisDb;
     private readonly string _bootstrapServers;
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(
+        ILogger<Worker> logger,
+        IConfiguration configuration)
     {
         _logger = logger;
-        _bootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
+
+        _bootstrapServers =
+            configuration.GetConnectionString("Kafka") ??
+            configuration["Kafka:BootstrapServers"] ??
+            "localhost:9092";
 
         try
         {
-            var mongoConnectionString = configuration["ConnectionStrings:Mongo"];
+            var mongoConnectionString =
+                configuration.GetConnectionString("Mongo");
+
             if (!string.IsNullOrEmpty(mongoConnectionString))
             {
-                var mongoClient = new MongoClient(mongoConnectionString);
-                var database = mongoClient.GetDatabase("BookerDb");
-                _mongoCollection = database.GetCollection<Reservation>("reservations");
-                _logger.LogInformation("MongoDB connected successfully");
+                var mongoClient =
+                    new MongoClient(mongoConnectionString);
+
+                var database =
+                    mongoClient.GetDatabase("BookerDb");
+
+                _mongoCollection =
+                    database.GetCollection<Reservation>("reservations");
+
+                _logger.LogInformation(
+                    "MongoDB connected successfully");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to connect to MongoDB");
+            _logger.LogError(
+                ex,
+                "Failed to connect to MongoDB");
         }
 
         try
         {
-            var redisConnectionString = configuration["ConnectionStrings:Redis"];
+            var redisConnectionString =
+                configuration.GetConnectionString("Redis");
+
             if (!string.IsNullOrEmpty(redisConnectionString))
             {
-                var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+                var redis =
+                    ConnectionMultiplexer.Connect(
+                        redisConnectionString);
+
                 _redisDb = redis.GetDatabase();
-                _logger.LogInformation("Redis connected successfully");
+
+                _logger.LogInformation(
+                    "Redis connected successfully");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to connect to Redis");
+            _logger.LogError(
+                ex,
+                "Failed to connect to Redis");
         }
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Storage Worker started - consuming from Kafka...");
+        _logger.LogInformation(
+            "Storage Worker started - consuming from Kafka...");
 
         var config = new ConsumerConfig
         {
@@ -62,57 +90,88 @@ public class Worker : BackgroundService
             EnableAutoCommit = false
         };
 
-        using var consumer = new ConsumerBuilder<Ignore, string>(config).Build();
+        using var consumer =
+            new ConsumerBuilder<Ignore, string>(config).Build();
+
         consumer.Subscribe("reservations");
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                var result = consumer.Consume(TimeSpan.FromSeconds(5));
-                if (result == null) continue;
+                var result =
+                    consumer.Consume(TimeSpan.FromSeconds(5));
 
-                _logger.LogInformation("Consumed message from Kafka: {Message}", result.Message.Value);
+                if (result == null)
+                    continue;
 
-                var reservation = JsonSerializer.Deserialize<Reservation>(result.Message.Value);
-                if (reservation == null) continue;
+                _logger.LogInformation(
+                    "Consumed reservation event at {TopicPartitionOffset}",
+                    result.TopicPartitionOffset);
+
+                var reservation =
+                    JsonSerializer.Deserialize<Reservation>(
+                        result.Message.Value);
+
+                if (reservation == null)
+                    continue;
 
                 if (_mongoCollection != null)
                 {
                     await _mongoCollection.ReplaceOneAsync(
-                        Builders<Reservation>.Filter.Eq(r => r.Id, reservation.Id),
+                        Builders<Reservation>.Filter.Eq(
+                            r => r.Id,
+                            reservation.Id),
                         reservation,
-                        new ReplaceOptions { IsUpsert = true },
-                        stoppingToken
-                    );
-                    _logger.LogInformation("Saved reservation {Id} to MongoDB", reservation.Id);
+                        new ReplaceOptions
+                        {
+                            IsUpsert = true
+                        },
+                        stoppingToken);
+
+                    _logger.LogInformation(
+                        "Saved reservation {ReservationId} to MongoDB",
+                        reservation.Id);
                 }
 
                 if (_redisDb != null)
                 {
-                    var json = JsonSerializer.Serialize(reservation);
+                    var json =
+                        JsonSerializer.Serialize(reservation);
+
                     await _redisDb.StringSetAsync(
                         $"reservation:{reservation.Id}",
                         json,
-                        TimeSpan.FromHours(24)
-                    );
-                    _logger.LogInformation("Cached reservation {Id} in Redis", reservation.Id);
+                        TimeSpan.FromHours(24));
+
+                    _logger.LogInformation(
+                        "Cached reservation {ReservationId} in Redis",
+                        reservation.Id);
                 }
 
                 consumer.Commit(result);
             }
             catch (ConsumeException ex)
             {
-                _logger.LogError(ex, "Kafka consume error");
+                _logger.LogError(
+                    ex,
+                    "Kafka consume error");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing message");
-                await Task.Delay(5000, stoppingToken);
+                _logger.LogError(
+                    ex,
+                    "Error processing reservation event");
+
+                await Task.Delay(
+                    TimeSpan.FromSeconds(5),
+                    stoppingToken);
             }
         }
 
         consumer.Close();
-        _logger.LogInformation("Storage Worker stopped");
+
+        _logger.LogInformation(
+            "Storage Worker stopped");
     }
 }

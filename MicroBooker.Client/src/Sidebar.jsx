@@ -48,7 +48,7 @@ const Sidebar = () => {
         <h4 className="sidebar-section">Pick time</h4>
         <p className="sidebar-subtitle">
           {selectedTable
-            ? `Times for ${selectedTable.tableNumber.replaceAll("_", " ")}`
+            ? `Times for Table ${selectedTable.tableNumber}`
             : "Select a table to see availability"}
         </p>
 

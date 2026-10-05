@@ -8,225 +8,400 @@ import {
   useState,
 } from "react";
 import { toast } from "react-toastify";
-import restaurantTables, { sidebarDates } from "../tablesData";
-import { createReservation, getReservations } from "../api/reservationsApi";
+import {
+  createAdminTable,
+  createRestaurant,
+  getAdminTables,
+  getOwnedRestaurants,
+  getRestaurantAvailability,
+  getRestaurantById,
+  getRestaurants,
+  getRestaurantTables,
+} from "../api/restaurantsApi";
+import {
+  createReservation,
+  getAdminReservations,
+  updateReservationStatus,
+} from "../api/reservationsApi";
 
 const AppContext = createContext(null);
-const RESERVATION_REFRESH_INTERVAL_MS = 5000;
 
-const normalizeReservation = (reservation) => ({
-  tableId: reservation?.tableId ?? reservation?.TableId ?? "",
-  timeSlot: reservation?.timeSlot ?? reservation?.TimeSlot ?? "",
-});
+const apiMessage = (error, fallback) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.title ||
+  error?.message ||
+  fallback;
 
-const to24Hour = (time12h) => {
-  const [time, modifier] = time12h.split(" ");
-  let [hours, minutes] = time.split(":").map(Number);
+const localDateKey = (date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 
-  if (modifier === "PM" && hours !== 12) hours += 12;
-  if (modifier === "AM" && hours === 12) hours = 0;
+const localTimeKey = (date) =>
+  `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
 
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+const toDateTimeOffset = (dateKey, timeKey) => {
+  const localDate = new Date(`${dateKey}T${timeKey}:00`);
+  const offsetMinutes = -localDate.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${dateKey}T${timeKey}:00${sign}${hours}:${minutes}`;
+};
+
+export const buildBookingDates = (count = 7) =>
+  Array.from({ length: count }, (_, index) => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() + index);
+
+    return {
+      key: localDateKey(date),
+      weekday: date.toLocaleDateString("en-CA", { weekday: "short" }),
+      label: date.toLocaleDateString("en-CA", {
+        month: "short",
+        day: "numeric",
+      }),
+    };
+  });
+
+export const formatClock = (value) => {
+  if (!value) return "";
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date(2000, 0, 1, hours, minutes);
+
+  return date.toLocaleTimeString("en-CA", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+export const buildTimeSlots = (openingTime, closingTime, interval = 30) => {
+  if (!openingTime || !closingTime) return [];
+
+  const toMinutes = (value) => {
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const opening = toMinutes(openingTime);
+  let closing = toMinutes(closingTime);
+
+  if (closing <= opening) closing += 24 * 60;
+
+  const slots = [];
+  for (let minute = opening; minute < closing; minute += interval) {
+    const normalized = minute % (24 * 60);
+    const hours = Math.floor(normalized / 60);
+    const minutes = normalized % 60;
+    slots.push(
+      `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`,
+    );
+  }
+
+  return slots;
 };
 
 export const AppProvider = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
+  const storedToken = localStorage.getItem("access_token");
+  const storedName = localStorage.getItem("user_name") || "";
+  const storedUserId = localStorage.getItem("user_id") || "";
 
-  const [selectedDateId, setSelectedDateId] = useState(
-    sidebarDates[0]?.id || null,
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(storedToken));
+  const [userName, setUserName] = useState(storedName);
+  const [currentUser, setCurrentUser] = useState(
+    storedUserId ? { id: storedUserId, name: storedName, email: "" } : null,
   );
-  const [selectedTime, setSelectedTime] = useState(null);
-  const [selectedTableId, setSelectedTableId] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [reservations, setReservations] = useState([]);
 
-  const selectedDate =
-    sidebarDates.find((date) => String(date.id) === String(selectedDateId)) ??
-    sidebarDates[0];
+  const [restaurantDirectory, setRestaurantDirectory] = useState([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
 
-  const selectedTable =
-    restaurantTables.find((table) => table.id === selectedTableId) ?? null;
+  const [bookingRestaurantId, setBookingRestaurantId] = useState("");
+  const [restaurant, setRestaurant] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [availability, setAvailability] = useState([]);
+  const [bookingLoading, setBookingLoading] = useState(false);
 
-  const loadReservations = useCallback(async (showError = true) => {
+  const [ownedRestaurants, setOwnedRestaurants] = useState([]);
+  const [ownedRestaurantsLoading, setOwnedRestaurantsLoading] = useState(false);
+  const [adminRestaurantId, setAdminRestaurantId] = useState("");
+  const [adminRestaurant, setAdminRestaurant] = useState(null);
+  const [adminTables, setAdminTables] = useState([]);
+  const [adminReservations, setAdminReservations] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  const loadRestaurantDirectory = useCallback(async (showError = true) => {
     try {
-      const data = await getReservations();
-
-      setReservations(
-        Array.isArray(data) ? data.map(normalizeReservation) : [],
-      );
-    } catch {
+      setDirectoryLoading(true);
+      const data = await getRestaurants();
+      setRestaurantDirectory(Array.isArray(data) ? data : []);
+    } catch (error) {
       if (showError) {
-        toast.error("Failed to load reservations");
+        toast.error(apiMessage(error, "Could not load restaurants"));
       }
+    } finally {
+      setDirectoryLoading(false);
     }
   }, []);
 
+  const refreshBooking = useCallback(
+    async (showError = true, showLoading = false) => {
+      if (!bookingRestaurantId) {
+        setRestaurant(null);
+        setTables([]);
+        setAvailability([]);
+        setBookingLoading(false);
+        return;
+      }
+
+      if (showLoading) setBookingLoading(true);
+
+      try {
+        const [restaurantData, tableData, availabilityData] = await Promise.all([
+          getRestaurantById(bookingRestaurantId),
+          getRestaurantTables(bookingRestaurantId),
+          getRestaurantAvailability(bookingRestaurantId),
+        ]);
+
+        setRestaurant(restaurantData);
+        setTables(Array.isArray(tableData) ? tableData : []);
+        setAvailability(Array.isArray(availabilityData) ? availabilityData : []);
+      } catch (error) {
+        if (showError) {
+          toast.error(apiMessage(error, "Could not load restaurant"));
+        }
+      } finally {
+        if (showLoading) setBookingLoading(false);
+      }
+    },
+    [bookingRestaurantId],
+  );
+
   useEffect(() => {
-    void loadReservations();
+    if (bookingRestaurantId) {
+      void refreshBooking(true, true);
+    }
+  }, [bookingRestaurantId, refreshBooking]);
 
-    const refreshReservations = () => {
-      void loadReservations(false);
-    };
-
-    const intervalId = window.setInterval(
-      refreshReservations,
-      RESERVATION_REFRESH_INTERVAL_MS,
-    );
-
-    window.addEventListener("focus", refreshReservations);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshReservations);
-    };
-  }, [loadReservations]);
-
-  const bookedKeys = useMemo(
+  const occupiedSlots = useMemo(
     () =>
-      new Set(
-        reservations
-          .filter((reservation) => reservation.tableId && reservation.timeSlot)
-          .map(
-            (reservation) => `${reservation.tableId}|${reservation.timeSlot}`,
-          ),
+      availability
+        .map((reservation) => {
+          const rawTime = reservation.timeSlot ?? reservation.TimeSlot;
+          const tableId = reservation.tableId ?? reservation.TableId;
+          const date = rawTime ? new Date(rawTime) : null;
+
+          if (!tableId || !date || Number.isNaN(date.getTime())) return null;
+
+          return {
+            tableId: String(tableId),
+            date: localDateKey(date),
+            time: localTimeKey(date),
+          };
+        })
+        .filter(Boolean),
+    [availability],
+  );
+
+  const isSlotOccupied = useCallback(
+    (tableId, date, time) =>
+      occupiedSlots.some(
+        (slot) =>
+          slot.tableId === String(tableId) &&
+          slot.date === date &&
+          slot.time === time,
       ),
-    [reservations],
+    [occupiedSlots],
   );
 
-  const getBookedTimesForTableOnDate = useCallback(
-    (tableNumber, dateString) => {
-      const prefix = `${dateString}T`;
+  const bookTable = useCallback(
+    async ({ tableId, date, time, partySize }) => {
+      if (!isLoggedIn) {
+        throw new Error("Please sign in before making a reservation.");
+      }
 
-      return reservations
-        .filter(
-          (reservation) =>
-            reservation.tableId === tableNumber &&
-            reservation.timeSlot.startsWith(prefix),
-        )
-        .map((reservation) => reservation.timeSlot.slice(11, 16));
+      try {
+        const reservation = await createReservation({
+          restaurantId: bookingRestaurantId,
+          tableId,
+          timeSlot: toDateTimeOffset(date, time),
+          partySize: Number(partySize),
+        });
+
+        toast.success("Reservation created. Status: Pending");
+        await refreshBooking(false, false);
+        return reservation;
+      } catch (error) {
+        throw new Error(apiMessage(error, "Reservation failed"));
+      }
     },
-    [reservations],
+    [bookingRestaurantId, isLoggedIn, refreshBooking],
   );
 
-  const isTableBooked = useCallback(
-    (tableNumber) => {
-      if (!selectedDate || !selectedTime) return false;
+  const loadOwnedRestaurants = useCallback(async (showError = true) => {
+    if (!localStorage.getItem("access_token")) {
+      setOwnedRestaurants([]);
+      return [];
+    }
 
-      const timeSlot = `${selectedDate.date}T${to24Hour(selectedTime)}:00`;
+    try {
+      setOwnedRestaurantsLoading(true);
+      const data = await getOwnedRestaurants();
+      const restaurants = Array.isArray(data) ? data : [];
+      setOwnedRestaurants(restaurants);
+      return restaurants;
+    } catch (error) {
+      if (showError) {
+        toast.error(apiMessage(error, "Could not load your restaurants"));
+      }
+      return [];
+    } finally {
+      setOwnedRestaurantsLoading(false);
+    }
+  }, []);
 
-      return bookedKeys.has(`${tableNumber}|${timeSlot}`);
+  const loadAdminRestaurant = useCallback(
+    async (restaurantId, showError = true) => {
+      const id = restaurantId?.trim();
+
+      if (!id) {
+        setAdminRestaurantId("");
+        setAdminRestaurant(null);
+        setAdminTables([]);
+        setAdminReservations([]);
+        return false;
+      }
+
+      try {
+        setAdminLoading(true);
+
+        const [restaurantData, tableData, reservationData] = await Promise.all([
+          getRestaurantById(id),
+          getAdminTables(id),
+          getAdminReservations(id),
+        ]);
+
+        setAdminRestaurantId(id);
+        setAdminRestaurant(restaurantData);
+        setAdminTables(Array.isArray(tableData) ? tableData : []);
+        setAdminReservations(
+          Array.isArray(reservationData) ? reservationData : [],
+        );
+
+        return true;
+      } catch (error) {
+        if (showError) {
+          const status = error?.response?.status;
+          toast.error(
+            status === 403
+              ? "You do not own this restaurant."
+              : apiMessage(error, "Could not load restaurant management data"),
+          );
+        }
+        return false;
+      } finally {
+        setAdminLoading(false);
+      }
     },
-    [bookedKeys, selectedDate, selectedTime],
+    [],
   );
 
-  const isTimeBookedForSelectedTable = useCallback(
-    (time12h) => {
-      if (!selectedTable || !selectedDate) return false;
+  const createOwnedRestaurant = useCallback(
+    async (payload) => {
+      try {
+        const created = await createRestaurant(payload);
+        const id = created.id ?? created.Id;
 
-      const time24h = to24Hour(time12h);
-      const bookedTimes = getBookedTimesForTableOnDate(
-        selectedTable.tableNumber,
-        selectedDate.date,
-      );
+        setOwnedRestaurants((current) => [...current, created]);
+        setAdminRestaurantId(id);
+        setAdminRestaurant(created);
+        setAdminTables([]);
+        setAdminReservations([]);
+        void loadRestaurantDirectory(false);
 
-      return bookedTimes.includes(time24h);
+        toast.success("Restaurant details saved");
+        return created;
+      } catch (error) {
+        throw new Error(apiMessage(error, "Could not create restaurant"));
+      }
     },
-    [selectedTable, selectedDate, getBookedTimesForTableOnDate],
+    [loadRestaurantDirectory],
   );
 
-  const handleLogout = () => {
+  const addAdminTable = useCallback(
+    async (payload) => {
+      if (!adminRestaurantId) {
+        throw new Error("Create or select a restaurant first.");
+      }
+
+      try {
+        const created = await createAdminTable(adminRestaurantId, payload);
+
+        setAdminTables((current) => [...current, created]);
+
+        if (bookingRestaurantId === adminRestaurantId) {
+          await refreshBooking(false, false);
+        }
+
+        return created;
+      } catch (error) {
+        throw new Error(apiMessage(error, "Could not create table"));
+      }
+    },
+    [adminRestaurantId, bookingRestaurantId, refreshBooking],
+  );
+
+  const changeReservationStatus = useCallback(
+    async (reservationId, status) => {
+      if (!adminRestaurantId) return;
+
+      try {
+        const updated = await updateReservationStatus(
+          adminRestaurantId,
+          reservationId,
+          status,
+        );
+
+        setAdminReservations((current) =>
+          current.map((reservation) =>
+            (reservation.id ?? reservation.Id) === reservationId
+              ? updated
+              : reservation,
+          ),
+        );
+
+        if (bookingRestaurantId === adminRestaurantId) {
+          await refreshBooking(false, false);
+        }
+
+        toast.success(`Reservation marked ${status}`);
+      } catch (error) {
+        throw new Error(apiMessage(error, "Could not update reservation"));
+      }
+    },
+    [adminRestaurantId, bookingRestaurantId, refreshBooking],
+  );
+
+  const handleLogout = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_name");
+    localStorage.removeItem("user_id");
+
     setIsLoggedIn(false);
     setUserName("");
     setCurrentUser(null);
-  };
 
-  const handleSelectTable = (table) => {
-    if (isTableBooked(table.tableNumber)) {
-      toast.error("This table is already booked for selected date/time");
-      return;
-    }
-
-    setSelectedTableId(table.id);
-    toast.info(`${table.tableNumber.replaceAll("_", " ")} selected`);
-  };
-
-  const handleReserve = async () => {
-    if (!isLoggedIn) {
-      toast.error("Please log in first");
-      return;
-    }
-
-    if (!currentUser?.id) {
-      toast.error("User session missing id. Please login again.");
-      return;
-    }
-
-    if (!selectedTable) {
-      toast.error("Please select a table");
-      return;
-    }
-
-    if (!selectedDate) {
-      toast.error("Please select a date");
-      return;
-    }
-
-    if (!selectedTime) {
-      toast.error("Please select a time");
-      return;
-    }
-
-    if (isTableBooked(selectedTable.tableNumber)) {
-      toast.error("This slot is already taken. Pick another time/table.");
-      return;
-    }
-
-    const payload = {
-      customerId: currentUser.id,
-      restaurantId: "demo-restaurant-1",
-      tableId: selectedTable.tableNumber,
-      timeSlot: `${selectedDate.date}T${to24Hour(selectedTime)}:00`,
-      partySize: selectedTable.capacity,
-    };
-
-    try {
-      setIsSubmitting(true);
-
-      const createdReservation = normalizeReservation(
-        await createReservation(payload),
-      );
-
-      if (createdReservation.tableId && createdReservation.timeSlot) {
-        const createdKey = `${createdReservation.tableId}|${createdReservation.timeSlot}`;
-
-        setReservations((currentReservations) => [
-          createdReservation,
-          ...currentReservations.filter(
-            (reservation) =>
-              `${reservation.tableId}|${reservation.timeSlot}` !== createdKey,
-          ),
-        ]);
-      }
-
-      toast.success(
-        `Reserved ${selectedTable.tableNumber.replaceAll("_", " ")} for ${selectedDate.dayOfWeek}, ${selectedDate.dayLabel} at ${selectedTime}`,
-      );
-    } catch (error) {
-      const message =
-        error?.response?.data?.message || "Reservation failed. Try again.";
-
-      toast.error(message);
-
-      // Refresh in case another user booked the slot first.
-      void loadReservations(false);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    setOwnedRestaurants([]);
+    setAdminRestaurantId("");
+    setAdminRestaurant(null);
+    setAdminTables([]);
+    setAdminReservations([]);
+  }, []);
 
   const value = {
     isLoggedIn,
@@ -237,23 +412,32 @@ export const AppProvider = ({ children }) => {
     setCurrentUser,
     handleLogout,
 
-    selectedTableId,
-    selectedDateId,
-    selectedTime,
-    isSubmitting,
-    selectedDate,
-    selectedTable,
-    reservations,
+    restaurantDirectory,
+    directoryLoading,
+    loadRestaurantDirectory,
 
-    handleSelectTable,
-    setSelectedDateId,
-    setSelectedTime,
-    handleReserve,
+    bookingRestaurantId,
+    setBookingRestaurantId,
+    restaurant,
+    tables,
+    availability,
+    bookingLoading,
+    refreshBooking,
+    isSlotOccupied,
+    bookTable,
 
-    isTableBooked,
-    isTimeBookedForSelectedTable,
-    getBookedTimesForTableOnDate,
-    loadReservations,
+    ownedRestaurants,
+    ownedRestaurantsLoading,
+    loadOwnedRestaurants,
+    adminRestaurantId,
+    adminRestaurant,
+    adminTables,
+    adminReservations,
+    adminLoading,
+    loadAdminRestaurant,
+    createOwnedRestaurant,
+    addAdminTable,
+    changeReservationStatus,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

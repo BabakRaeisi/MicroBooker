@@ -1,8 +1,12 @@
 name: CI
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
   pull_request:
     branches: [main]
 
@@ -90,3 +94,74 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/${{ matrix.name }}:latest -f ${{ matrix.dockerfile }} ${{ matrix.context }}
           docker push $ECR_REGISTRY/${{ matrix.name }}:latest
+
+
+
+
+  configure-production-routing:
+    runs-on: ubuntu-latest
+    needs: [build-dotnet]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Route restaurant endpoints to Reservation API
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          LB_ARN=$(aws elbv2 describe-load-balancers \
+            --names auth-alb \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text)
+
+          LISTENER_ARN=$(aws elbv2 describe-listeners \
+            --load-balancer-arn "$LB_ARN" \
+            --query 'Listeners[?Port==`443`].ListenerArn | [0]' \
+            --output text)
+
+          TG_ARN=$(aws elbv2 describe-target-groups \
+            --names reservation-api-tg \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+
+          RULES_JSON=$(aws elbv2 describe-rules --listener-arn "$LISTENER_ARN")
+
+          if echo "$RULES_JSON" | jq -e '
+            any(
+              .Rules[].Conditions[]?;
+              .Field == "path-pattern" and
+              any(.Values[]?; . == "/api/Restaurants*" or . == "/api/admin/restaurants*")
+            )
+          ' >/dev/null; then
+            echo "Restaurant routing rule already exists."
+            exit 0
+          fi
+
+          USED_PRIORITIES=$(echo "$RULES_JSON" | jq -r '.Rules[].Priority' | grep -E '^[0-9]+$' || true)
+          PRIORITY=""
+
+          for candidate in $(seq 10 99); do
+            if ! grep -qx "$candidate" <<< "$USED_PRIORITIES"; then
+              PRIORITY="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$PRIORITY" ]; then
+            echo "No free ALB rule priority found."
+            exit 1
+          fi
+
+          aws elbv2 create-rule \
+            --listener-arn "$LISTENER_ARN" \
+            --priority "$PRIORITY" \
+            --conditions 'Field=path-pattern,Values=/api/Restaurants*,/api/admin/restaurants*' \
+            --actions "Type=forward,TargetGroupArn=$TG_ARN"
+
+          echo "Created restaurant routing rule at priority $PRIORITY."

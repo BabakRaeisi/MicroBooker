@@ -1,0 +1,38 @@
+var builder = DistributedApplication.CreateBuilder(args);
+
+var redis = builder.AddRedis("redis");
+
+var mongo = builder.AddMongoDB("mongo");
+
+var kafka = builder.AddKafka("kafka");
+
+var reservationApi = builder
+    .AddProject<Projects.Reservation_Api>("reservation-api")
+    .WithReference(redis)
+    .WithReference(mongo)
+    .WithReference(kafka)
+    .WaitFor(redis)
+    .WaitFor(mongo)
+    .WaitFor(kafka)
+    .WithExternalHttpEndpoints();
+
+builder
+    .AddProject<Projects.MicroBooker_StorageWorker>("storage-worker")
+    .WithReference(redis)
+    .WithReference(mongo)
+    .WithReference(kafka)
+    .WaitFor(redis)
+    .WaitFor(mongo)
+    .WaitFor(kafka);
+
+builder
+    .AddViteApp("client", "../MicroBooker.Client")
+    .WithReference(reservationApi)
+    .WithEnvironment("NODE_ENV", "development")
+    .WithEnvironment(
+        "VITE_API_BASE_URL",
+        reservationApi.GetEndpoint("http"))
+    .WaitFor(reservationApi)
+    .WithExternalHttpEndpoints();
+
+builder.Build().Run();
