@@ -1,36 +1,52 @@
-import { FiCalendar, FiLogOut, FiSettings, FiUser } from "react-icons/fi";
+import {
+  FiArrowLeft,
+  FiHome,
+  FiLogOut,
+  FiSettings,
+  FiUser,
+} from "react-icons/fi";
 import { useAppContext } from "./context/AppContext";
 
-const Header = ({ view, onViewChange, onAuthOpen }) => {
-  const { isLoggedIn, userName, handleLogout, restaurant } = useAppContext();
+const Header = ({ portal, onNavigate, onAuthOpen }) => {
+  const { isLoggedIn, userName, handleLogout } = useAppContext();
+  const isPartner = portal === "partner";
 
   return (
-    <header className="app-header">
-      <div className="brand-block">
+    <header className={"app-header " + (isPartner ? "partner-header" : "")}>
+      <button
+        type="button"
+        className="brand-button"
+        onClick={() => onNavigate(isPartner ? "/admin" : "/")}
+      >
         <div className="brand-mark">MB</div>
-        <div>
-          <strong>MicroBooker</strong>
-          <span>{restaurant?.name || "Restaurant reservations"}</span>
+        <div className="brand-copy">
+          <strong>{isPartner ? "MicroBooker Partners" : "MicroBooker"}</strong>
+          <span>
+            {isPartner
+              ? "Restaurant management"
+              : "Discover restaurants. Book a table."}
+          </span>
         </div>
-      </div>
+      </button>
 
-      <nav className="primary-nav" aria-label="Primary">
-        <button
-          type="button"
-          className={view === "booking" ? "active" : ""}
-          onClick={() => onViewChange("booking")}
-        >
-          <FiCalendar />
-          Book
-        </button>
-        <button
-          type="button"
-          className={view === "admin" ? "active" : ""}
-          onClick={() => onViewChange("admin")}
-        >
-          <FiSettings />
-          Restaurant admin
-        </button>
+      <nav className="portal-nav" aria-label="Primary">
+        {isPartner ? (
+          <button type="button" onClick={() => onNavigate("/")}>
+            <FiArrowLeft />
+            Back to MicroBooker
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => onNavigate("/")}>
+              <FiHome />
+              Explore
+            </button>
+            <button type="button" onClick={() => onNavigate("/admin")}>
+              <FiSettings />
+              Restaurant partners
+            </button>
+          </>
+        )}
       </nav>
 
       <div className="account-actions">
@@ -48,7 +64,7 @@ const Header = ({ view, onViewChange, onAuthOpen }) => {
         ) : (
           <button type="button" className="primary-button" onClick={onAuthOpen}>
             <FiUser />
-            Sign in
+            {isPartner ? "Partner sign in" : "Sign in"}
           </button>
         )}
       </div>
