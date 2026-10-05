@@ -37,13 +37,31 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
     setBookingRestaurantId(restaurantId);
   }, [restaurantId, setBookingRestaurantId]);
 
+  const operatingHours =
+    restaurant?.operatingHours ?? restaurant?.OperatingHours ?? [];
+
+  const getScheduleForDate = (dateKey) => {
+    const dayName = new Date(dateKey + "T12:00:00").toLocaleDateString(
+      "en-US",
+      { weekday: "long" },
+    );
+
+    return operatingHours.find(
+      (item) => (item.dayOfWeek ?? item.DayOfWeek) === dayName,
+    );
+  };
+
+  const selectedSchedule = getScheduleForDate(selectedDate);
+
   const timeSlots = useMemo(
     () =>
-      buildTimeSlots(
-        restaurant?.openingTime ?? restaurant?.OpeningTime,
-        restaurant?.closingTime ?? restaurant?.ClosingTime,
-      ),
-    [restaurant],
+      selectedSchedule
+        ? buildTimeSlots(
+            selectedSchedule.openingTime ?? selectedSchedule.OpeningTime,
+            selectedSchedule.closingTime ?? selectedSchedule.ClosingTime,
+          )
+        : [],
+    [selectedDate, restaurant],
   );
 
   const suitableTables = tables.filter(
@@ -92,8 +110,12 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
     );
   }
 
-  const opening = restaurant.openingTime ?? restaurant.OpeningTime;
-  const closing = restaurant.closingTime ?? restaurant.ClosingTime;
+  const todayName = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+  });
+  const todayHours = operatingHours.find(
+    (item) => (item.dayOfWeek ?? item.DayOfWeek) === todayName,
+  );
 
   return (
     <div className="booking-page">
@@ -117,9 +139,22 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
             </span>
             <span>
               <FiClock />
-              {formatClock((opening || "").slice(0, 5))}
-              {" – "}
-              {formatClock((closing || "").slice(0, 5))}
+              {todayHours
+                ? "Today " +
+                  formatClock(
+                    (todayHours.openingTime ?? todayHours.OpeningTime).slice(
+                      0,
+                      5,
+                    ),
+                  ) +
+                  " – " +
+                  formatClock(
+                    (todayHours.closingTime ?? todayHours.ClosingTime).slice(
+                      0,
+                      5,
+                    ),
+                  )
+                : "Closed today"}
             </span>
           </div>
         </div>
@@ -140,20 +175,30 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
           </div>
 
           <div className="date-strip">
-            {dates.map((date) => (
-              <button
-                type="button"
-                key={date.key}
-                className={selectedDate === date.key ? "active" : ""}
-                onClick={() => {
-                  setSelectedDate(date.key);
-                  setSelectedTableId("");
-                }}
-              >
-                <span>{date.weekday}</span>
-                <strong>{date.label}</strong>
-              </button>
-            ))}
+            {dates.map((date) => {
+              const isOpen = Boolean(getScheduleForDate(date.key));
+
+              return (
+                <button
+                  type="button"
+                  key={date.key}
+                  disabled={!isOpen}
+                  className={
+                    (selectedDate === date.key ? "active" : "") +
+                    (!isOpen ? " closed-day" : "")
+                  }
+                  onClick={() => {
+                    setSelectedDate(date.key);
+                    setSelectedTime("");
+                    setSelectedTableId("");
+                  }}
+                >
+                  <span>{date.weekday}</span>
+                  <strong>{date.label}</strong>
+                  {!isOpen && <small>Closed</small>}
+                </button>
+              );
+            })}
           </div>
 
           <label className="field">
@@ -181,6 +226,11 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
               <FiClock />
               Time
             </span>
+            {!selectedSchedule ? (
+              <div className="closed-day-message">
+                This restaurant is closed on the selected day.
+              </div>
+            ) : (
             <div className="time-grid">
               {timeSlots.map((time) => {
                 const fullyBooked =
@@ -209,6 +259,7 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
                 );
               })}
             </div>
+            )}
           </div>
         </div>
 
