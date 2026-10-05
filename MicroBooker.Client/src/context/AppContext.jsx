@@ -26,6 +26,24 @@ import {
 
 const AppContext = createContext(null);
 
+const decodeJwtPayload = (token) => {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+};
+
+const normalizeRole = (value) => {
+  if (!value) return "";
+  const role = String(value).toLowerCase();
+  if (role === "partner") return "Partner";
+  if (role === "customer") return "Customer";
+  return "";
+};
+
 const apiMessage = (error, fallback) =>
   error?.response?.data?.message ||
   error?.response?.data?.title ||
@@ -111,11 +129,17 @@ export const AppProvider = ({ children }) => {
   const storedToken = localStorage.getItem("access_token");
   const storedName = localStorage.getItem("user_name") || "";
   const storedUserId = localStorage.getItem("user_id") || "";
+  const storedPayload = storedToken ? decodeJwtPayload(storedToken) : null;
+  const storedRole = normalizeRole(
+    localStorage.getItem("user_role") || storedPayload?.role,
+  );
 
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(storedToken));
   const [userName, setUserName] = useState(storedName);
   const [currentUser, setCurrentUser] = useState(
-    storedUserId ? { id: storedUserId, name: storedName, email: "" } : null,
+    storedUserId
+      ? { id: storedUserId, name: storedName, email: "", role: storedRole }
+      : null,
   );
 
   const [restaurantDirectory, setRestaurantDirectory] = useState([]);
@@ -147,7 +171,7 @@ export const AppProvider = ({ children }) => {
     } finally {
       setDirectoryLoading(false);
     }
-  }, []);
+  }, [currentUser?.role]);
 
   const refreshBooking = useCallback(
     async (showError = true, showLoading = false) => {
@@ -225,6 +249,12 @@ export const AppProvider = ({ children }) => {
         throw new Error("Please sign in before making a reservation.");
       }
 
+      if (currentUser?.role !== "Customer") {
+        throw new Error(
+          "Partner accounts cannot create reservations. Sign in with a customer account.",
+        );
+      }
+
       try {
         const reservation = await createReservation({
           restaurantId: bookingRestaurantId,
@@ -240,11 +270,11 @@ export const AppProvider = ({ children }) => {
         throw new Error(apiMessage(error, "Reservation failed"));
       }
     },
-    [bookingRestaurantId, isLoggedIn, refreshBooking],
+    [bookingRestaurantId, currentUser?.role, isLoggedIn, refreshBooking],
   );
 
   const loadOwnedRestaurants = useCallback(async (showError = true) => {
-    if (!localStorage.getItem("access_token")) {
+    if (!localStorage.getItem("access_token") || currentUser?.role !== "Partner") {
       setOwnedRestaurants([]);
       return [];
     }
@@ -313,6 +343,10 @@ export const AppProvider = ({ children }) => {
 
   const createOwnedRestaurant = useCallback(
     async (payload) => {
+      if (currentUser?.role !== "Partner") {
+        throw new Error("Only partner accounts can create restaurants.");
+      }
+
       try {
         const created = await createRestaurant(payload);
         const id = created.id ?? created.Id;
@@ -330,11 +364,15 @@ export const AppProvider = ({ children }) => {
         throw new Error(apiMessage(error, "Could not create restaurant"));
       }
     },
-    [loadRestaurantDirectory],
+    [currentUser?.role, loadRestaurantDirectory],
   );
 
   const addAdminTable = useCallback(
     async (payload) => {
+      if (currentUser?.role !== "Partner") {
+        throw new Error("Only partner accounts can manage restaurant tables.");
+      }
+
       if (!adminRestaurantId) {
         throw new Error("Create or select a restaurant first.");
       }
@@ -353,11 +391,15 @@ export const AppProvider = ({ children }) => {
         throw new Error(apiMessage(error, "Could not create table"));
       }
     },
-    [adminRestaurantId, bookingRestaurantId, refreshBooking],
+    [adminRestaurantId, bookingRestaurantId, currentUser?.role, refreshBooking],
   );
 
   const changeReservationStatus = useCallback(
     async (reservationId, status) => {
+      if (currentUser?.role !== "Partner") {
+        throw new Error("Only partner accounts can manage reservations.");
+      }
+
       if (!adminRestaurantId) return;
 
       try {
@@ -384,13 +426,14 @@ export const AppProvider = ({ children }) => {
         throw new Error(apiMessage(error, "Could not update reservation"));
       }
     },
-    [adminRestaurantId, bookingRestaurantId, refreshBooking],
+    [adminRestaurantId, bookingRestaurantId, currentUser?.role, refreshBooking],
   );
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_name");
     localStorage.removeItem("user_id");
+    localStorage.removeItem("user_role");
 
     setIsLoggedIn(false);
     setUserName("");
