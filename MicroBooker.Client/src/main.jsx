@@ -1,5 +1,4 @@
 import "@vitejs/plugin-react/preamble";
-import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import ErrorBoundary from "./ErrorBoundary";
@@ -31,13 +30,11 @@ try {
   ]);
 
   ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <ErrorBoundary>
-        <AppProvider>
-          <App />
-        </AppProvider>
-      </ErrorBoundary>
-    </React.StrictMode>,
+    <ErrorBoundary>
+      <AppProvider>
+        <App />
+      </AppProvider>
+    </ErrorBoundary>,
   );
 } catch (error) {
   showStartupError(error);
