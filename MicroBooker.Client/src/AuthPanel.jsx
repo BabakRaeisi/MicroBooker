@@ -26,7 +26,7 @@ const decodeJwtPayload = (token) => {
   }
 };
 
-const AuthPanel = ({ onClose }) => {
+const AuthPanel = ({ audience = "customer", onClose }) => {
   const [mode, setMode] = useState("login");
   const [registerForm, setRegisterForm] = useState(emptyRegister);
   const [loginForm, setLoginForm] = useState(emptyLogin);
@@ -122,8 +122,18 @@ const AuthPanel = ({ onClose }) => {
         <div className="auth-brand">
           <div className="brand-mark">MB</div>
           <div>
-            <span className="eyebrow">MicroBooker account</span>
-            <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2>
+            <span className="eyebrow">
+              {audience === "partner" ? "MicroBooker Partners" : "MicroBooker"}
+            </span>
+            <h2>
+              {mode === "login"
+                ? audience === "partner"
+                  ? "Restaurant owner sign in"
+                  : "Sign in to book"
+                : audience === "partner"
+                  ? "Create a partner account"
+                  : "Create your diner account"}
+            </h2>
           </div>
         </div>
 
