@@ -32,9 +32,6 @@ builder
     .WithEnvironment(
         "VITE_API_BASE_URL",
         reservationApi.GetEndpoint("http"))
-    .WithEnvironment(
-        "VITE_RESTAURANT_ID",
-        "3c59cb69-b280-464f-8f42-3f9866955fb8")
     .WaitFor(reservationApi)
     .WithExternalHttpEndpoints();
 
