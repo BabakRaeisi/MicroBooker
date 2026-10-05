@@ -13,4 +13,11 @@ public interface IRestaurantRepository
     Task<Restaurant?> GetBySlugAsync(
         string slug,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Restaurant>> GetAllAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<Restaurant>> GetByOwnerUserIdAsync(
+        string ownerUserId,
+        CancellationToken cancellationToken = default);
 }
