@@ -1,16 +1,32 @@
+import { requestFinished, requestStarted } from "../diagnostics";
+
 const AUTH_BASE_URL =
   import.meta.env.VITE_AUTH_BASE_URL || "http://localhost:5001";
 
 async function postJson(url, payload) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const requestId = requestStarted("POST", url);
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
-  return data;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const error = new Error(data?.message || `HTTP ${res.status}`);
+      requestFinished(requestId, res.status, error);
+      throw error;
+    }
+
+    requestFinished(requestId, res.status);
+    return data;
+  } catch (error) {
+    requestFinished(requestId, null, error);
+    throw error;
+  }
 }
 
 export function register(payload) {
