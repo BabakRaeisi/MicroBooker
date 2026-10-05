@@ -2,7 +2,8 @@ var builder = DistributedApplication.CreateBuilder(args);
 
 var redis = builder.AddRedis("redis");
 
-var mongo = builder.AddMongoDB("mongo");
+var mongo = builder.AddMongoDB("mongo")
+    .WithDataVolume();
 
 var kafka = builder.AddKafka("kafka");
 
