@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  FiArrowLeft,
   FiCalendar,
   FiClock,
   FiMapPin,
   FiPhone,
-  FiRefreshCw,
   FiUsers,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
@@ -15,14 +15,13 @@ import {
   useAppContext,
 } from "./context/AppContext";
 
-const BookingView = ({ onAuthOpen }) => {
+const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
   const {
     isLoggedIn,
+    setBookingRestaurantId,
     restaurant,
     tables,
     bookingLoading,
-    bookingRestaurantId,
-    refreshBooking,
     isSlotOccupied,
     bookTable,
   } = useAppContext();
@@ -34,6 +33,10 @@ const BookingView = ({ onAuthOpen }) => {
   const [selectedTableId, setSelectedTableId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    setBookingRestaurantId(restaurantId);
+  }, [restaurantId, setBookingRestaurantId]);
+
   const timeSlots = useMemo(
     () =>
       buildTimeSlots(
@@ -43,12 +46,12 @@ const BookingView = ({ onAuthOpen }) => {
     [restaurant],
   );
 
-  const selectedTable = tables.find(
-    (table) => String(table.id ?? table.Id) === String(selectedTableId),
-  );
-
   const suitableTables = tables.filter(
     (table) => Number(table.capacity ?? table.Capacity) >= Number(partySize),
+  );
+
+  const selectedTable = suitableTables.find(
+    (table) => String(table.id ?? table.Id) === String(selectedTableId),
   );
 
   const handleReserve = async () => {
@@ -79,55 +82,50 @@ const BookingView = ({ onAuthOpen }) => {
     }
   };
 
-  if (bookingLoading) {
+  if (bookingLoading || !restaurant) {
     return (
       <section className="state-panel">
         <div className="spinner" />
         <h2>Loading restaurant</h2>
-        <p>Fetching tables and current availability.</p>
+        <p>Fetching restaurant details and availability.</p>
       </section>
     );
   }
 
-  if (!restaurant) {
-    return (
-      <section className="state-panel">
-        <h2>Restaurant unavailable</h2>
-        <p>
-          The configured restaurant could not be loaded. Current restaurant ID:
-        </p>
-        <code>{bookingRestaurantId || "Not configured"}</code>
-        <button className="primary-button" type="button" onClick={refreshBooking}>
-          <FiRefreshCw />
-          Try again
-        </button>
-      </section>
-    );
-  }
+  const opening = restaurant.openingTime ?? restaurant.OpeningTime;
+  const closing = restaurant.closingTime ?? restaurant.ClosingTime;
 
   return (
     <div className="booking-page">
+      <button type="button" className="back-link" onClick={onBack}>
+        <FiArrowLeft />
+        All restaurants
+      </button>
+
       <section className="restaurant-hero">
         <div>
-          <span className="eyebrow">Now accepting reservations</span>
-          <h1>{restaurant.name}</h1>
-          <p>
-            Pick a time, party size, and one of the available tables. The
-            availability shown here comes directly from the reservation API.
-          </p>
+          <span className="eyebrow">Restaurant on MicroBooker</span>
+          <h1>{restaurant.name ?? restaurant.Name}</h1>
           <div className="restaurant-meta">
-            <span><FiMapPin /> {restaurant.address}</span>
-            <span><FiPhone /> {restaurant.phone}</span>
+            <span>
+              <FiMapPin />
+              {restaurant.address ?? restaurant.Address}
+            </span>
+            <span>
+              <FiPhone />
+              {restaurant.phone ?? restaurant.Phone}
+            </span>
             <span>
               <FiClock />
-              {formatClock((restaurant.openingTime || "").slice(0, 5))} –{" "}
-              {formatClock((restaurant.closingTime || "").slice(0, 5))}
+              {formatClock((opening || "").slice(0, 5))}
+              {" – "}
+              {formatClock((closing || "").slice(0, 5))}
             </span>
           </div>
         </div>
         <div className="hero-stat">
           <strong>{tables.length}</strong>
-          <span>active tables</span>
+          <span>tables available</span>
         </div>
       </section>
 
@@ -135,8 +133,8 @@ const BookingView = ({ onAuthOpen }) => {
         <div className="booking-controls card">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Step 1</span>
-              <h2>Choose your visit</h2>
+              <span className="eyebrow">Your visit</span>
+              <h2>Date, time & party</h2>
             </div>
             <FiCalendar />
           </div>
@@ -159,7 +157,10 @@ const BookingView = ({ onAuthOpen }) => {
           </div>
 
           <label className="field">
-            <span><FiUsers /> Party size</span>
+            <span>
+              <FiUsers />
+              Party size
+            </span>
             <select
               value={partySize}
               onChange={(event) => {
@@ -176,10 +177,13 @@ const BookingView = ({ onAuthOpen }) => {
           </label>
 
           <div className="field">
-            <span><FiClock /> Time</span>
+            <span>
+              <FiClock />
+              Time
+            </span>
             <div className="time-grid">
               {timeSlots.map((time) => {
-                const everySuitableTableOccupied =
+                const fullyBooked =
                   suitableTables.length > 0 &&
                   suitableTables.every((table) =>
                     isSlotOccupied(
@@ -194,7 +198,7 @@ const BookingView = ({ onAuthOpen }) => {
                     type="button"
                     key={time}
                     className={selectedTime === time ? "active" : ""}
-                    disabled={everySuitableTableOccupied}
+                    disabled={fullyBooked}
                     onClick={() => {
                       setSelectedTime(time);
                       setSelectedTableId("");
@@ -211,18 +215,15 @@ const BookingView = ({ onAuthOpen }) => {
         <div className="table-picker card">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Step 2</span>
-              <h2>Select a table</h2>
+              <span className="eyebrow">Available seating</span>
+              <h2>Choose a table</h2>
             </div>
-            <span className="availability-key">
-              <i /> Available
-            </span>
           </div>
 
           {!selectedTime ? (
             <div className="empty-card">
               <FiClock />
-              <p>Choose a time to see table availability.</p>
+              <p>Choose a time to see available tables.</p>
             </div>
           ) : suitableTables.length === 0 ? (
             <div className="empty-card">
@@ -237,17 +238,17 @@ const BookingView = ({ onAuthOpen }) => {
                 const capacity = table.capacity ?? table.Capacity;
                 const occupied = isSlotOccupied(id, selectedDate, selectedTime);
                 const selected = String(selectedTableId) === String(id);
-                const classes =
-                  "table-card" +
-                  (selected ? " selected" : "") +
-                  (occupied ? " occupied" : "");
 
                 return (
                   <button
                     type="button"
                     key={id}
                     disabled={occupied}
-                    className={classes}
+                    className={
+                      "table-card" +
+                      (selected ? " selected" : "") +
+                      (occupied ? " occupied" : "")
+                    }
                     onClick={() => setSelectedTableId(id)}
                   >
                     <span className="table-shape">T{number}</span>
@@ -262,16 +263,22 @@ const BookingView = ({ onAuthOpen }) => {
 
           <div className="booking-summary">
             <div>
-              <span>Selection</span>
+              <span>Reservation</span>
               <strong>
                 {selectedTable
-                  ? "Table " + (selectedTable.tableNumber ?? selectedTable.TableNumber)
-                  : "No table selected"}
+                  ? "Table " +
+                    (selectedTable.tableNumber ?? selectedTable.TableNumber)
+                  : "Choose a table"}
               </strong>
               <small>
                 {selectedDate && selectedTime
-                  ? selectedDate + " · " + formatClock(selectedTime) + " · " + partySize + " guests"
-                  : "Complete the visit details above"}
+                  ? selectedDate +
+                    " · " +
+                    formatClock(selectedTime) +
+                    " · " +
+                    partySize +
+                    " guests"
+                  : "Select your visit details"}
               </small>
             </div>
             <button
@@ -280,7 +287,7 @@ const BookingView = ({ onAuthOpen }) => {
               disabled={!selectedTable || submitting}
               onClick={handleReserve}
             >
-              {submitting ? "Creating reservation..." : "Reserve table"}
+              {submitting ? "Reserving..." : "Reserve table"}
             </button>
           </div>
         </div>
