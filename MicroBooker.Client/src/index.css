@@ -1591,3 +1591,15 @@ code {
     font-size: 2.6rem;
   }
 }
+
+
+.auth-context-note {
+  margin: 1rem 0 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #dbe5e1;
+  border-radius: 10px;
+  background: #f6faf8;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
