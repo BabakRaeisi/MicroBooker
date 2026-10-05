@@ -12,8 +12,7 @@ public class Restaurant
 
     public string Phone { get; set; } = string.Empty;
 
-    public TimeOnly OpeningTime { get; set; }
     public string OwnerUserId { get; set; } = string.Empty;
 
-    public TimeOnly ClosingTime { get; set; }
+    public List<RestaurantOperatingHours> OperatingHours { get; set; } = [];
 }
