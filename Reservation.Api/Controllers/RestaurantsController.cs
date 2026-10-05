@@ -1,7 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MicroBooker.Application;
-using System.Security.Claims ; 
-using Microsoft.AspNetCore.Authorization; 
+using Reservation.Api.Extensions;
 
 namespace Reservation.Api.Controllers;
 
@@ -15,39 +15,60 @@ public class RestaurantsController : ControllerBase
     {
         _restaurantService = restaurantService;
     }
+
     [Authorize]
-[HttpPost]
-public async Task<IActionResult> CreateRestaurant(
-    [FromBody] CreateRestaurantRequestDto request,
-    CancellationToken cancellationToken)
-{
-    var ownerUserId =
-        User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-        User.FindFirstValue("sub") ??
-        User.FindFirstValue("nameid");
+    [HttpPost]
+    public async Task<IActionResult> CreateRestaurant(
+        [FromBody] CreateRestaurantRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserId = User.GetUserId();
 
-    if (string.IsNullOrWhiteSpace(ownerUserId))
-        return Unauthorized(new { message = "Missing user id claim in token." });
+        if (string.IsNullOrWhiteSpace(ownerUserId))
+        {
+            return Unauthorized(new
+            {
+                message = "Missing user id claim in token."
+            });
+        }
 
-    var restaurant = await _restaurantService.CreateAsync(
-        request,
-        ownerUserId,
-        cancellationToken);
+        var restaurant = await _restaurantService.CreateAsync(
+            request,
+            ownerUserId,
+            cancellationToken);
 
-    return Ok(restaurant);
-}
+        if (restaurant is null)
+        {
+            return Conflict(new
+            {
+                message = "A restaurant with this slug already exists."
+            });
+        }
+
+        return Ok(restaurant);
+    }
+
     [HttpGet("{id:guid}")]
-public async Task<IActionResult> GetRestaurantById(
-    Guid id,
-    CancellationToken cancellationToken)
-{
-    var restaurant = await _restaurantService.GetByIdAsync(
-        id,
-        cancellationToken);
+    public async Task<IActionResult> GetRestaurantById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var restaurant = await _restaurantService.GetByIdAsync(
+            id,
+            cancellationToken);
 
-    if (restaurant is null)
-        return NotFound();
+        if (restaurant is null)
+            return NotFound();
 
-    return Ok(restaurant);
-}
+        return Ok(new
+        {
+            restaurant.Id,
+            restaurant.Name,
+            restaurant.Slug,
+            restaurant.Address,
+            restaurant.Phone,
+            restaurant.OpeningTime,
+            restaurant.ClosingTime
+        });
+    }
 }
