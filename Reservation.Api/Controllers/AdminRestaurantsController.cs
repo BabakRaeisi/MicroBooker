@@ -37,8 +37,7 @@ public class AdminRestaurantsController : ControllerBase
             restaurant.Slug,
             restaurant.Address,
             restaurant.Phone,
-            restaurant.OpeningTime,
-            restaurant.ClosingTime
+            restaurant.OperatingHours
         }));
     }
 }
