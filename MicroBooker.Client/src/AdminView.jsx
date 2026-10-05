@@ -71,8 +71,8 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
   const [setupStep, setSetupStep] = useState(0);
   const [restaurantForm, setRestaurantForm] = useState(emptyRestaurant);
   const [setupTables, setSetupTables] = useState([emptyTable()]);
-  const [creatingRestaurant, setCreatingRestaurant] = useState(false);
   const [savingTables, setSavingTables] = useState(false);
+  const [setupRestaurantSaved, setSetupRestaurantSaved] = useState(false);
   const [tableForm, setTableForm] = useState(emptyTable());
   const [creatingTable, setCreatingTable] = useState(false);
   const [statusBusy, setStatusBusy] = useState("");
@@ -102,6 +102,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
   const beginSetup = () => {
     setRestaurantForm(emptyRestaurant());
     setSetupTables([emptyTable()]);
+    setSetupRestaurantSaved(false);
     setSetupStep(1);
   };
 
@@ -114,38 +115,28 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     }));
   };
 
-  const handleCreateRestaurant = async (event) => {
+  const handleRestaurantDetails = (event) => {
     event.preventDefault();
 
-    const operatingHours = restaurantForm.operatingHours
-      .filter((item) => item.isOpen)
-      .map((item) => ({
-        dayOfWeek: item.dayOfWeek,
-        openingTime: item.openingTime + ":00",
-        closingTime: item.closingTime + ":00",
-      }));
+    const openDays = restaurantForm.operatingHours.filter(
+      (item) => item.isOpen,
+    );
 
-    if (operatingHours.length === 0) {
+    if (openDays.length === 0) {
       toast.error("Select at least one operating day.");
       return;
     }
 
-    try {
-      setCreatingRestaurant(true);
+    const invalidHours = openDays.some(
+      (item) => item.closingTime <= item.openingTime,
+    );
 
-      await createOwnedRestaurant({
-        name: restaurantForm.name.trim(),
-        address: restaurantForm.address.trim(),
-        phone: restaurantForm.phone.trim(),
-        operatingHours,
-      });
-
-      setSetupStep(2);
-    } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setCreatingRestaurant(false);
+    if (invalidHours) {
+      toast.error("Closing time must be later than opening time.");
+      return;
     }
+
+    setSetupStep(2);
   };
 
   const updateSetupTable = (index, changes) => {
@@ -192,12 +183,32 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     try {
       setSavingTables(true);
 
+      if (!setupRestaurantSaved) {
+        const operatingHours = restaurantForm.operatingHours
+          .filter((item) => item.isOpen)
+          .map((item) => ({
+            dayOfWeek: item.dayOfWeek,
+            openingTime: item.openingTime + ":00",
+            closingTime: item.closingTime + ":00",
+          }));
+
+        await createOwnedRestaurant({
+          name: restaurantForm.name.trim(),
+          address: restaurantForm.address.trim(),
+          phone: restaurantForm.phone.trim(),
+          operatingHours,
+        });
+
+        setSetupRestaurantSaved(true);
+      }
+
       for (const table of normalizedTables) {
         await addAdminTable(table);
       }
 
       await loadOwnedRestaurants(false);
       setSetupStep(0);
+      setSetupRestaurantSaved(false);
       toast.success("Restaurant setup complete");
     } catch (error) {
       toast.error(error.message);
@@ -302,7 +313,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
         </section>
 
         {activeStep === 1 ? (
-          <form className="setup-card card" onSubmit={handleCreateRestaurant}>
+          <form className="setup-card card" onSubmit={handleRestaurantDetails}>
             <div className="section-heading">
               <div>
                 <span className="eyebrow">Step 1 of 2</span>
@@ -437,9 +448,8 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
               <button
                 type="submit"
                 className="primary-button"
-                disabled={creatingRestaurant}
               >
-                {creatingRestaurant ? "Saving..." : "Continue to tables"}
+                Continue to tables
               </button>
             </div>
           </form>
