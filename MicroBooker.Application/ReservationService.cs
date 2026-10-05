@@ -37,6 +37,19 @@ public class ReservationService
             cancellationToken);
     }
 
+    public async Task<Reservation?> UpdateStatusAsync(
+        Guid restaurantId,
+        Guid reservationId,
+        ReservationStatus status,
+        CancellationToken cancellationToken = default)
+    {
+        return await _reservationRepository.UpdateStatusAsync(
+            restaurantId,
+            reservationId,
+            status,
+            cancellationToken);
+    }
+
     public async Task<BookingResult> BookTableAsync(
         ReservationRequestDto request,
         string customerId,
@@ -119,6 +132,7 @@ public class ReservationService
             TableId = request.TableId,
             TimeSlot = normalizedTimeSlot,
             PartySize = request.PartySize,
+            Status = ReservationStatus.Pending,
             CreatedAt = DateTime.UtcNow
         };
 
