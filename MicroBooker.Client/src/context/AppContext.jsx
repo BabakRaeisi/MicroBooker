@@ -318,47 +318,42 @@ export const AppProvider = ({ children }) => {
         const id = created.id ?? created.Id;
 
         setOwnedRestaurants((current) => [...current, created]);
-        await loadAdminRestaurant(id, false);
-        await loadRestaurantDirectory(false);
+        setAdminRestaurantId(id);
+        setAdminRestaurant(created);
+        setAdminTables([]);
+        setAdminReservations([]);
+        void loadRestaurantDirectory(false);
 
-        toast.success("Restaurant created");
+        toast.success("Restaurant details saved");
         return created;
       } catch (error) {
         throw new Error(apiMessage(error, "Could not create restaurant"));
       }
     },
-    [loadAdminRestaurant, loadRestaurantDirectory],
+    [loadRestaurantDirectory],
   );
 
   const addAdminTable = useCallback(
     async (payload) => {
       if (!adminRestaurantId) {
-        throw new Error("Select a restaurant first.");
+        throw new Error("Create or select a restaurant first.");
       }
 
       try {
         const created = await createAdminTable(adminRestaurantId, payload);
-        await loadAdminRestaurant(adminRestaurantId, false);
+
+        setAdminTables((current) => [...current, created]);
 
         if (bookingRestaurantId === adminRestaurantId) {
           await refreshBooking(false, false);
         }
-
-        toast.success(
-          `Table ${created.tableNumber ?? created.TableNumber} added`,
-        );
 
         return created;
       } catch (error) {
         throw new Error(apiMessage(error, "Could not create table"));
       }
     },
-    [
-      adminRestaurantId,
-      bookingRestaurantId,
-      loadAdminRestaurant,
-      refreshBooking,
-    ],
+    [adminRestaurantId, bookingRestaurantId, refreshBooking],
   );
 
   const changeReservationStatus = useCallback(
