@@ -203,7 +203,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
 
             <form className="form-grid" onSubmit={handleCreateRestaurant}>
               <label className="field">
-                <span>Name</span>
+                <span>Restaurant name</span>
                 <input
                   required
                   value={restaurantForm.name}
