@@ -11,7 +11,7 @@ public class RestaurantTableService
         _tableRepository = tableRepository;
     }
 
-    public async Task<RestaurantTable> CreateAsync(
+    public async Task<RestaurantTable?> CreateAsync(
         Guid restaurantId,
         CreateRestaurantTableRequestDto request,
         CancellationToken cancellationToken = default)
@@ -25,11 +25,11 @@ public class RestaurantTableService
             IsActive = true
         };
 
-        await _tableRepository.CreateAsync(
+        var created = await _tableRepository.TryCreateAsync(
             table,
             cancellationToken);
 
-        return table;
+        return created ? table : null;
     }
 
     public async Task<IReadOnlyList<RestaurantTable>> GetByRestaurantIdAsync(
