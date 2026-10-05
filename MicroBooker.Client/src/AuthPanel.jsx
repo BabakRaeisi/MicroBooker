@@ -38,14 +38,46 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
     event.preventDefault();
     try {
       setIsSubmitting(true);
-      await register({
+      const result = await register({
         ...registerForm,
         email: registerForm.email.trim(),
         personName: registerForm.personName.trim(),
       });
-      toast.success("Account created. Sign in to continue.");
+
+      const token = result?.Token || result?.token || result?.accessToken || "";
+      const payload = token ? decodeJwtPayload(token) : null;
+      const id =
+        result?.UserID ||
+        result?.userId ||
+        payload?.sub ||
+        payload?.nameid ||
+        "";
+      const name =
+        result?.PersonName ||
+        result?.personName ||
+        payload?.name ||
+        registerForm.personName.trim();
+      const email = result?.Email || result?.email || registerForm.email.trim();
+
+      if (!token || !id) {
+        throw new Error("Registration response is missing the JWT or user id.");
+      }
+
+      localStorage.setItem("access_token", token);
+      localStorage.setItem("user_name", name);
+      localStorage.setItem("user_id", id);
+
+      setIsLoggedIn(true);
+      setUserName(name);
+      setCurrentUser({ id, name, email });
+
       setRegisterForm(emptyRegister);
-      setMode("login");
+      toast.success(
+        audience === "partner"
+          ? "Partner account created. Set up your restaurant next."
+          : "Account created",
+      );
+      onClose?.();
     } catch (error) {
       toast.error(error.message || "Registration failed");
     } finally {
