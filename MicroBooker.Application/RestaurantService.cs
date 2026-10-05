@@ -44,6 +44,21 @@ public class RestaurantService
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Restaurant>> GetAllAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _restaurantRepository.GetAllAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Restaurant>> GetOwnedByUserIdAsync(
+        string ownerUserId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _restaurantRepository.GetByOwnerUserIdAsync(
+            ownerUserId,
+            cancellationToken);
+    }
+
     public async Task<bool> IsOwnerAsync(
         Guid restaurantId,
         string userId,
