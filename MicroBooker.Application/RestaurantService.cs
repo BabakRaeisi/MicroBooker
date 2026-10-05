@@ -11,48 +11,49 @@ public class RestaurantService
         _restaurantRepository = restaurantRepository;
     }
 
-public async Task<Restaurant> CreateAsync(
-    CreateRestaurantRequestDto request,
-    string ownerUserId,
-    CancellationToken cancellationToken = default)
+    public async Task<Restaurant?> CreateAsync(
+        CreateRestaurantRequestDto request,
+        string ownerUserId,
+        CancellationToken cancellationToken = default)
     {
         var restaurant = new Restaurant
-    {
-        Id = Guid.NewGuid(),
-        OwnerUserId = ownerUserId,
-        Name = request.Name.Trim(),
-        Slug = request.Slug.Trim(),
-        Address = request.Address.Trim(),
-        Phone = request.Phone.Trim(),
-        OpeningTime = request.OpeningTime,
-        ClosingTime = request.ClosingTime
-    };
+        {
+            Id = Guid.NewGuid(),
+            OwnerUserId = ownerUserId,
+            Name = request.Name.Trim(),
+            Slug = request.Slug.Trim().ToLowerInvariant(),
+            Address = request.Address.Trim(),
+            Phone = request.Phone.Trim(),
+            OpeningTime = request.OpeningTime,
+            ClosingTime = request.ClosingTime
+        };
 
-        await _restaurantRepository.CreateAsync(
+        var created = await _restaurantRepository.TryCreateAsync(
             restaurant,
             cancellationToken);
 
-        return restaurant;
+        return created ? restaurant : null;
     }
+
     public async Task<Restaurant?> GetByIdAsync(
-    Guid id,
-    CancellationToken cancellationToken = default)
-{
-    return await _restaurantRepository.GetByIdAsync(
-        id,
-        cancellationToken);
-}
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        return await _restaurantRepository.GetByIdAsync(
+            id,
+            cancellationToken);
+    }
 
-public async Task<bool> IsOwnerAsync(
-    Guid restaurantId,
-    string userId,
-    CancellationToken cancellationToken = default)
-{
-    var restaurant = await _restaurantRepository.GetByIdAsync(
-        restaurantId,
-        cancellationToken);
+    public async Task<bool> IsOwnerAsync(
+        Guid restaurantId,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        var restaurant = await _restaurantRepository.GetByIdAsync(
+            restaurantId,
+            cancellationToken);
 
-    return restaurant is not null &&
-           restaurant.OwnerUserId == userId;
-}
+        return restaurant is not null &&
+               restaurant.OwnerUserId == userId;
+    }
 }
