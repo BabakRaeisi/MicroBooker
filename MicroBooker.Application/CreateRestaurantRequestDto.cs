@@ -33,10 +33,10 @@ public class CreateRestaurantRequestDto : IValidatableObject
 
         foreach (var hours in OperatingHours)
         {
-            if (hours.OpeningTime == hours.ClosingTime)
+            if (hours.ClosingTime <= hours.OpeningTime)
             {
                 yield return new ValidationResult(
-                    $"{hours.DayOfWeek}: opening and closing times cannot be the same.",
+                    $"{hours.DayOfWeek}: closing time must be later than opening time.",
                     new[] { nameof(OperatingHours) });
             }
         }
