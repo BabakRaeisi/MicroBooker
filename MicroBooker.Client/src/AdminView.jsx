@@ -54,6 +54,8 @@ const emptyTable = (tableNumber = 1) => ({
 const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
   const {
     isLoggedIn,
+    currentUser,
+    handleLogout,
     ownedRestaurants,
     ownedRestaurantsLoading,
     loadOwnedRestaurants,
@@ -78,10 +80,10 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
   const [statusBusy, setStatusBusy] = useState("");
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn && currentUser?.role === "Partner") {
       void loadOwnedRestaurants(false);
     }
-  }, [isLoggedIn, loadOwnedRestaurants]);
+  }, [currentUser?.role, isLoggedIn, loadOwnedRestaurants]);
 
   const counts = useMemo(() => {
     const result = {
@@ -294,6 +296,32 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
             <strong>Reservations</strong>
             <span>Review bookings and update reservation status.</span>
           </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (currentUser?.role !== "Partner") {
+    return (
+      <section className="partner-welcome">
+        <div className="partner-welcome-copy">
+          <span className="eyebrow">MicroBooker Partners</span>
+          <h1>This is a customer account.</h1>
+          <p>
+            Customer accounts can make reservations, but they cannot create or
+            manage restaurants. Sign out and use a partner account here.
+          </p>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              handleLogout();
+              onAuthOpen();
+            }}
+          >
+            <FiSettings />
+            Use a partner account
+          </button>
         </div>
       </section>
     );
