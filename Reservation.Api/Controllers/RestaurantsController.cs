@@ -23,6 +23,24 @@ public class RestaurantsController : ControllerBase
         _reservationService = reservationService;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetRestaurants(
+        CancellationToken cancellationToken)
+    {
+        var restaurants = await _restaurantService.GetAllAsync(cancellationToken);
+
+        return Ok(restaurants.Select(restaurant => new
+        {
+            restaurant.Id,
+            restaurant.Name,
+            restaurant.Slug,
+            restaurant.Address,
+            restaurant.Phone,
+            restaurant.OpeningTime,
+            restaurant.ClosingTime
+        }));
+    }
+
     [Authorize]
     [HttpPost]
     public async Task<IActionResult> CreateRestaurant(
