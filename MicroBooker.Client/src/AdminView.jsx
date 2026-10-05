@@ -7,6 +7,7 @@ import {
   FiPlus,
   FiRefreshCw,
   FiSettings,
+  FiTrash2,
   FiUsers,
 } from "react-icons/fi";
 import { toast } from "react-toastify";
@@ -20,14 +21,35 @@ const STATUS_OPTIONS = [
   "NoShow",
 ];
 
-const emptyRestaurant = {
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+const createSchedule = () =>
+  DAYS.map((day) => ({
+    dayOfWeek: day,
+    isOpen: true,
+    openingTime: "10:00",
+    closingTime: "22:00",
+  }));
+
+const emptyRestaurant = () => ({
   name: "",
-  slug: "",
   address: "",
   phone: "",
-  openingTime: "10:00",
-  closingTime: "22:00",
-};
+  operatingHours: createSchedule(),
+});
+
+const emptyTable = (tableNumber = 1) => ({
+  tableNumber,
+  capacity: 2,
+});
 
 const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
   const {
@@ -46,10 +68,12 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     changeReservationStatus,
   } = useAppContext();
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [setupStep, setSetupStep] = useState(0);
   const [restaurantForm, setRestaurantForm] = useState(emptyRestaurant);
-  const [tableForm, setTableForm] = useState({ tableNumber: 1, capacity: 2 });
+  const [setupTables, setSetupTables] = useState([emptyTable()]);
   const [creatingRestaurant, setCreatingRestaurant] = useState(false);
+  const [savingTables, setSavingTables] = useState(false);
+  const [tableForm, setTableForm] = useState(emptyTable());
   const [creatingTable, setCreatingTable] = useState(false);
   const [statusBusy, setStatusBusy] = useState("");
 
@@ -75,63 +99,110 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     return result;
   }, [adminReservations]);
 
-  if (!isLoggedIn) {
-    return (
-      <section className="partner-welcome">
-        <div className="partner-welcome-copy">
-          <span className="eyebrow">MicroBooker Partners</span>
-          <h1>Run your reservations from one place.</h1>
-          <p>
-            The partner portal is separate from the customer booking experience.
-            Restaurant owners can create locations, manage tables, review
-            reservations, and update booking status here.
-          </p>
-          <button type="button" className="primary-button" onClick={onAuthOpen}>
-            <FiSettings />
-            Partner sign in or register
-          </button>
-        </div>
+  const beginSetup = () => {
+    setRestaurantForm(emptyRestaurant());
+    setSetupTables([emptyTable()]);
+    setSetupStep(1);
+  };
 
-        <div className="partner-feature-grid">
-          <article>
-            <FiUsers />
-            <strong>Table management</strong>
-            <span>Create and review restaurant tables.</span>
-          </article>
-          <article>
-            <FiClipboard />
-            <strong>Reservation queue</strong>
-            <span>Review incoming bookings and change their status.</span>
-          </article>
-          <article>
-            <FiCheckCircle />
-            <strong>Multiple restaurants</strong>
-            <span>One owner account can manage more than one restaurant.</span>
-          </article>
-        </div>
-      </section>
-    );
-  }
+  const updateSchedule = (index, changes) => {
+    setRestaurantForm((current) => ({
+      ...current,
+      operatingHours: current.operatingHours.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...changes } : item,
+      ),
+    }));
+  };
 
   const handleCreateRestaurant = async (event) => {
     event.preventDefault();
+
+    const operatingHours = restaurantForm.operatingHours
+      .filter((item) => item.isOpen)
+      .map((item) => ({
+        dayOfWeek: item.dayOfWeek,
+        openingTime: item.openingTime + ":00",
+        closingTime: item.closingTime + ":00",
+      }));
+
+    if (operatingHours.length === 0) {
+      toast.error("Select at least one operating day.");
+      return;
+    }
 
     try {
       setCreatingRestaurant(true);
 
       await createOwnedRestaurant({
-        ...restaurantForm,
-        openingTime: restaurantForm.openingTime + ":00",
-        closingTime: restaurantForm.closingTime + ":00",
+        name: restaurantForm.name.trim(),
+        address: restaurantForm.address.trim(),
+        phone: restaurantForm.phone.trim(),
+        operatingHours,
       });
 
-      setRestaurantForm(emptyRestaurant);
-      setShowCreate(false);
-      await loadOwnedRestaurants(false);
+      setSetupStep(2);
     } catch (error) {
       toast.error(error.message);
     } finally {
       setCreatingRestaurant(false);
+    }
+  };
+
+  const updateSetupTable = (index, changes) => {
+    setSetupTables((current) =>
+      current.map((table, tableIndex) =>
+        tableIndex === index ? { ...table, ...changes } : table,
+      ),
+    );
+  };
+
+  const addSetupTableRow = () => {
+    setSetupTables((current) => [
+      ...current,
+      emptyTable(
+        current.length === 0
+          ? 1
+          : Math.max(...current.map((table) => Number(table.tableNumber))) + 1,
+      ),
+    ]);
+  };
+
+  const removeSetupTableRow = (index) => {
+    setSetupTables((current) =>
+      current.length === 1
+        ? current
+        : current.filter((_, tableIndex) => tableIndex !== index),
+    );
+  };
+
+  const finishTableSetup = async (event) => {
+    event.preventDefault();
+
+    const normalizedTables = setupTables.map((table) => ({
+      tableNumber: Number(table.tableNumber),
+      capacity: Number(table.capacity),
+    }));
+
+    const tableNumbers = normalizedTables.map((table) => table.tableNumber);
+    if (new Set(tableNumbers).size !== tableNumbers.length) {
+      toast.error("Table numbers must be unique.");
+      return;
+    }
+
+    try {
+      setSavingTables(true);
+
+      for (const table of normalizedTables) {
+        await addAdminTable(table);
+      }
+
+      await loadOwnedRestaurants(false);
+      setSetupStep(0);
+      toast.success("Restaurant setup complete");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSavingTables(false);
     }
   };
 
@@ -150,6 +221,8 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
         tableNumber: Number(current.tableNumber) + 1,
         capacity: current.capacity,
       }));
+
+      toast.success("Table added");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -168,6 +241,293 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     }
   };
 
+  if (!isLoggedIn) {
+    return (
+      <section className="partner-welcome">
+        <div className="partner-welcome-copy">
+          <span className="eyebrow">MicroBooker Partners</span>
+          <h1>Manage your restaurant, not your booking spreadsheet.</h1>
+          <p>
+            Create an owner account first. After signing in, you will set up
+            your restaurant details, weekly operating schedule, tables, and
+            seat capacities.
+          </p>
+          <button type="button" className="primary-button" onClick={onAuthOpen}>
+            <FiSettings />
+            Partner sign in or register
+          </button>
+        </div>
+
+        <div className="partner-feature-grid">
+          <article>
+            <FiSettings />
+            <strong>Restaurant setup</strong>
+            <span>Name, address, phone, operating days, and opening hours.</span>
+          </article>
+          <article>
+            <FiUsers />
+            <strong>Tables & seats</strong>
+            <span>Define every table and its seating capacity.</span>
+          </article>
+          <article>
+            <FiClipboard />
+            <strong>Reservations</strong>
+            <span>Review bookings and update reservation status.</span>
+          </article>
+        </div>
+      </section>
+    );
+  }
+
+  if (setupStep > 0 || (!ownedRestaurantsLoading && ownedRestaurants.length === 0 && !adminRestaurant)) {
+    const activeStep = setupStep || 1;
+
+    return (
+      <div className="onboarding-page">
+        <section className="onboarding-header">
+          <div>
+            <span className="eyebrow">Restaurant onboarding</span>
+            <h1>Set up your restaurant</h1>
+            <p>
+              Your owner account is separate from the restaurant. Add the
+              business and floor details here.
+            </p>
+          </div>
+
+          <div className="setup-progress" aria-label="Setup progress">
+            <span className={activeStep >= 1 ? "active" : ""}>1</span>
+            <i />
+            <span className={activeStep >= 2 ? "active" : ""}>2</span>
+          </div>
+        </section>
+
+        {activeStep === 1 ? (
+          <form className="setup-card card" onSubmit={handleCreateRestaurant}>
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">Step 1 of 2</span>
+                <h2>Restaurant details</h2>
+              </div>
+              <FiSettings />
+            </div>
+
+            <div className="setup-details-grid">
+              <label className="field">
+                <span>Restaurant name</span>
+                <input
+                  required
+                  maxLength="100"
+                  value={restaurantForm.name}
+                  onChange={(event) =>
+                    setRestaurantForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="Harbour Table"
+                />
+              </label>
+
+              <label className="field">
+                <span>Phone number</span>
+                <input
+                  required
+                  maxLength="30"
+                  value={restaurantForm.phone}
+                  onChange={(event) =>
+                    setRestaurantForm((current) => ({
+                      ...current,
+                      phone: event.target.value,
+                    }))
+                  }
+                  placeholder="+1 416 555 1234"
+                />
+              </label>
+
+              <label className="field setup-address">
+                <span>Restaurant address</span>
+                <input
+                  required
+                  maxLength="200"
+                  value={restaurantForm.address}
+                  onChange={(event) =>
+                    setRestaurantForm((current) => ({
+                      ...current,
+                      address: event.target.value,
+                    }))
+                  }
+                  placeholder="100 Main Street, Vaughan, ON"
+                />
+              </label>
+            </div>
+
+            <div className="schedule-section">
+              <div className="schedule-heading">
+                <div>
+                  <h3>Operating days & hours</h3>
+                  <p>Turn off days when the restaurant is closed.</p>
+                </div>
+              </div>
+
+              <div className="schedule-list">
+                {restaurantForm.operatingHours.map((item, index) => (
+                  <div
+                    className={"schedule-row" + (!item.isOpen ? " closed" : "")}
+                    key={item.dayOfWeek}
+                  >
+                    <label className="day-toggle">
+                      <input
+                        type="checkbox"
+                        checked={item.isOpen}
+                        onChange={(event) =>
+                          updateSchedule(index, { isOpen: event.target.checked })
+                        }
+                      />
+                      <span>{item.dayOfWeek}</span>
+                    </label>
+
+                    {item.isOpen ? (
+                      <div className="schedule-times">
+                        <label>
+                          <span>Open</span>
+                          <input
+                            type="time"
+                            required
+                            value={item.openingTime}
+                            onChange={(event) =>
+                              updateSchedule(index, {
+                                openingTime: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                        <span className="time-separator">to</span>
+                        <label>
+                          <span>Close</span>
+                          <input
+                            type="time"
+                            required
+                            value={item.closingTime}
+                            onChange={(event) =>
+                              updateSchedule(index, {
+                                closingTime: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <strong className="closed-label">Closed</strong>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="setup-actions">
+              {ownedRestaurants.length > 0 && (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setSetupStep(0)}
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={creatingRestaurant}
+              >
+                {creatingRestaurant ? "Saving..." : "Continue to tables"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="setup-card card" onSubmit={finishTableSetup}>
+            <div className="section-heading">
+              <div>
+                <span className="eyebrow">Step 2 of 2</span>
+                <h2>Tables & seating</h2>
+              </div>
+              <FiUsers />
+            </div>
+
+            <p className="section-copy">
+              Add each physical table and the maximum number of guests it can seat.
+            </p>
+
+            <div className="setup-table-list">
+              {setupTables.map((table, index) => (
+                <div className="setup-table-row" key={index}>
+                  <label className="field">
+                    <span>Table number</span>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={table.tableNumber}
+                      onChange={(event) =>
+                        updateSetupTable(index, {
+                          tableNumber: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span>Seats</span>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={table.capacity}
+                      onChange={(event) =>
+                        updateSetupTable(index, {
+                          capacity: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="icon-button danger-icon"
+                    disabled={setupTables.length === 1}
+                    onClick={() => removeSetupTableRow(index)}
+                    aria-label={"Remove table " + table.tableNumber}
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              className="secondary-button add-table-row"
+              onClick={addSetupTableRow}
+            >
+              <FiPlus />
+              Add another table
+            </button>
+
+            <div className="setup-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={savingTables}
+              >
+                <FiCheckCircle />
+                {savingTables ? "Saving tables..." : "Finish restaurant setup"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    );
+  }
+
   if (!adminRestaurant) {
     return (
       <div className="partner-dashboard">
@@ -175,168 +535,26 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
           <div>
             <span className="eyebrow">Partner portal</span>
             <h1>My restaurants</h1>
-            <p>
-              Choose a restaurant to manage it, or add another location to your
-              account.
-            </p>
+            <p>Select a restaurant to manage or add another location.</p>
           </div>
 
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => setShowCreate((value) => !value)}
-          >
+          <button type="button" className="primary-button" onClick={beginSetup}>
             <FiPlus />
             Add restaurant
           </button>
         </section>
-
-        {showCreate && (
-          <section className="create-restaurant card">
-            <div className="section-heading">
-              <div>
-                <span className="eyebrow">New restaurant</span>
-                <h2>Create a restaurant</h2>
-              </div>
-              <FiPlus />
-            </div>
-
-            <form className="form-grid" onSubmit={handleCreateRestaurant}>
-              <label className="field">
-                <span>Restaurant name</span>
-                <input
-                  required
-                  value={restaurantForm.name}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      name: event.target.value,
-                    })
-                  }
-                  placeholder="Harbour Table"
-                />
-              </label>
-
-              <label className="field">
-                <span>Slug</span>
-                <input
-                  required
-                  pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$"
-                  value={restaurantForm.slug}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      slug: event.target.value,
-                    })
-                  }
-                  placeholder="harbour-table"
-                />
-              </label>
-
-              <label className="field field-wide">
-                <span>Address</span>
-                <input
-                  required
-                  value={restaurantForm.address}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      address: event.target.value,
-                    })
-                  }
-                  placeholder="100 Main Street"
-                />
-              </label>
-
-              <label className="field">
-                <span>Phone</span>
-                <input
-                  required
-                  value={restaurantForm.phone}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      phone: event.target.value,
-                    })
-                  }
-                  placeholder="+1 416 555 1234"
-                />
-              </label>
-
-              <label className="field">
-                <span>Opening time</span>
-                <input
-                  type="time"
-                  required
-                  value={restaurantForm.openingTime}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      openingTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
-
-              <label className="field">
-                <span>Closing time</span>
-                <input
-                  type="time"
-                  required
-                  value={restaurantForm.closingTime}
-                  onChange={(event) =>
-                    setRestaurantForm({
-                      ...restaurantForm,
-                      closingTime: event.target.value,
-                    })
-                  }
-                />
-              </label>
-
-              <div className="form-actions field-wide">
-                <button
-                  type="submit"
-                  className="primary-button"
-                  disabled={creatingRestaurant}
-                >
-                  <FiPlus />
-                  {creatingRestaurant ? "Creating..." : "Create restaurant"}
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
 
         {ownedRestaurantsLoading ? (
           <section className="state-panel compact-state">
             <div className="spinner" />
             <p>Loading your restaurants...</p>
           </section>
-        ) : ownedRestaurants.length === 0 ? (
-          <section className="empty-owner-state card">
-            <FiSettings />
-            <h2>No restaurants yet</h2>
-            <p>
-              Create your first restaurant to start managing tables and
-              reservations.
-            </p>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => setShowCreate(true)}
-            >
-              <FiPlus />
-              Create first restaurant
-            </button>
-          </section>
         ) : (
           <section className="owner-restaurant-grid">
             {ownedRestaurants.map((restaurant) => {
               const id = restaurant.id ?? restaurant.Id;
-              const opening =
-                restaurant.openingTime ?? restaurant.OpeningTime;
-              const closing =
-                restaurant.closingTime ?? restaurant.ClosingTime;
+              const operatingHours =
+                restaurant.operatingHours ?? restaurant.OperatingHours ?? [];
 
               return (
                 <article className="owner-restaurant-card" key={id}>
@@ -349,11 +567,8 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
 
                   <h2>{restaurant.name}</h2>
                   <p>{restaurant.address}</p>
-
                   <div className="owner-card-hours">
-                    {formatClock((opening || "").slice(0, 5))}
-                    {" – "}
-                    {formatClock((closing || "").slice(0, 5))}
+                    {operatingHours.length} operating days configured
                   </div>
 
                   <div className="owner-card-actions">
@@ -382,6 +597,9 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
     );
   }
 
+  const adminHours =
+    adminRestaurant.operatingHours ?? adminRestaurant.OperatingHours ?? [];
+
   return (
     <div className="admin-page">
       <button
@@ -400,15 +618,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
           <p>{adminRestaurant.address}</p>
           <div className="admin-detail-row">
             <span>{adminRestaurant.phone}</span>
-            <span>
-              {formatClock(
-                (adminRestaurant.openingTime || "").slice(0, 5),
-              )}
-              {" – "}
-              {formatClock(
-                (adminRestaurant.closingTime || "").slice(0, 5),
-              )}
-            </span>
+            <span>{adminHours.length} operating days</span>
           </div>
         </div>
 
@@ -457,6 +667,40 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
         </article>
       </section>
 
+      <section className="operating-hours-card card">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Weekly schedule</span>
+            <h2>Operating hours</h2>
+          </div>
+        </div>
+
+        <div className="hours-summary-grid">
+          {DAYS.map((day) => {
+            const hours = adminHours.find(
+              (item) => (item.dayOfWeek ?? item.DayOfWeek) === day,
+            );
+
+            return (
+              <div className="hours-summary-row" key={day}>
+                <strong>{day.slice(0, 3)}</strong>
+                <span>
+                  {hours
+                    ? formatClock(
+                        (hours.openingTime ?? hours.OpeningTime).slice(0, 5),
+                      ) +
+                      " – " +
+                      formatClock(
+                        (hours.closingTime ?? hours.ClosingTime).slice(0, 5),
+                      )
+                    : "Closed"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       <div className="admin-columns">
         <section className="card">
           <div className="section-heading">
@@ -485,7 +729,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
             </label>
 
             <label className="field">
-              <span>Capacity</span>
+              <span>Seats</span>
               <input
                 type="number"
                 min="1"
@@ -530,9 +774,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
                     <small>{table.capacity ?? table.Capacity} seats</small>
                   </div>
                   <em>
-                    {(table.isActive ?? table.IsActive)
-                      ? "Active"
-                      : "Inactive"}
+                    {(table.isActive ?? table.IsActive) ? "Active" : "Inactive"}
                   </em>
                 </article>
               ))
@@ -558,8 +800,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
             <div className="reservation-list">
               {adminReservations.map((reservation) => {
                 const id = reservation.id ?? reservation.Id;
-                const status =
-                  reservation.status ?? reservation.Status;
+                const status = reservation.status ?? reservation.Status;
                 const date = new Date(
                   reservation.timeSlot ?? reservation.TimeSlot,
                 );
@@ -567,9 +808,7 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
                 const table = adminTables.find(
                   (item) =>
                     String(item.id ?? item.Id) ===
-                    String(
-                      reservation.tableId ?? reservation.TableId,
-                    ),
+                    String(reservation.tableId ?? reservation.TableId),
                 );
 
                 return (
@@ -586,23 +825,14 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
                           minute: "2-digit",
                         })}
                       </strong>
-
                       <span>
-                        Table{" "}
-                        {table?.tableNumber ??
-                          table?.TableNumber ??
-                          "—"}{" "}
-                        ·{" "}
-                        {reservation.partySize ??
-                          reservation.PartySize}{" "}
-                        guests
+                        Table {table?.tableNumber ?? table?.TableNumber ?? "—"} ·{" "}
+                        {reservation.partySize ?? reservation.PartySize} guests
                       </span>
-
                       <small>
                         Customer{" "}
                         {String(
-                          reservation.customerId ??
-                            reservation.CustomerId,
+                          reservation.customerId ?? reservation.CustomerId,
                         ).slice(0, 8)}
                         …
                       </small>
