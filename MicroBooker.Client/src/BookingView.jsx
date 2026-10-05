@@ -18,6 +18,7 @@ import {
 const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
   const {
     isLoggedIn,
+    currentUser,
     setBookingRestaurantId,
     restaurant,
     tables,
@@ -76,6 +77,13 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
     if (!isLoggedIn) {
       onAuthOpen();
       toast.info("Sign in to finish your reservation");
+      return;
+    }
+
+    if (currentUser?.role === "Partner") {
+      toast.error(
+        "Partner accounts cannot make reservations. Sign in with a customer account.",
+      );
       return;
     }
 
@@ -335,10 +343,18 @@ const BookingView = ({ restaurantId, onBack, onAuthOpen }) => {
             <button
               type="button"
               className="primary-button reserve-button"
-              disabled={!selectedTable || submitting}
+              disabled={
+                !selectedTable ||
+                submitting ||
+                currentUser?.role === "Partner"
+              }
               onClick={handleReserve}
             >
-              {submitting ? "Reserving..." : "Reserve table"}
+              {currentUser?.role === "Partner"
+                ? "Customer account required"
+                : submitting
+                  ? "Reserving..."
+                  : "Reserve table"}
             </button>
           </div>
         </div>
