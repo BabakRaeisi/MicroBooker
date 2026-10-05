@@ -26,6 +26,14 @@ const decodeJwtPayload = (token) => {
   }
 };
 
+const normalizeRole = (value) => {
+  if (!value) return "";
+  const role = String(value).toLowerCase();
+  if (role === "partner") return "Partner";
+  if (role === "customer") return "Customer";
+  return "";
+};
+
 const AuthPanel = ({ audience = "customer", onClose }) => {
   const [mode, setMode] = useState("login");
   const [registerForm, setRegisterForm] = useState(emptyRegister);
@@ -38,10 +46,12 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
     event.preventDefault();
     try {
       setIsSubmitting(true);
+      const expectedRole = audience === "partner" ? "Partner" : "Customer";
       const result = await register({
         ...registerForm,
         email: registerForm.email.trim(),
         personName: registerForm.personName.trim(),
+        role: expectedRole,
       });
 
       const token = result?.Token || result?.token || result?.accessToken || "";
@@ -58,18 +68,24 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
         payload?.name ||
         registerForm.personName.trim();
       const email = result?.Email || result?.email || registerForm.email.trim();
+      const role = normalizeRole(
+        result?.Role || result?.role || payload?.role || expectedRole,
+      );
 
-      if (!token || !id) {
-        throw new Error("Registration response is missing the JWT or user id.");
+      if (!token || !id || !role) {
+        throw new Error(
+          "Registration response is missing the JWT, user id, or account role.",
+        );
       }
 
       localStorage.setItem("access_token", token);
       localStorage.setItem("user_name", name);
       localStorage.setItem("user_id", id);
+      localStorage.setItem("user_role", role);
 
       setIsLoggedIn(true);
       setUserName(name);
-      setCurrentUser({ id, name, email });
+      setCurrentUser({ id, name, email, role });
 
       setRegisterForm(emptyRegister);
       toast.success(
@@ -116,18 +132,31 @@ const AuthPanel = ({ audience = "customer", onClose }) => {
         "";
 
       const email = result?.Email || result?.email || loginForm.email.trim();
+      const role = normalizeRole(result?.Role || result?.role || payload?.role);
+      const expectedRole = audience === "partner" ? "Partner" : "Customer";
 
-      if (!token || !id) {
-        throw new Error("Login response is missing the JWT or user id.");
+      if (!token || !id || !role) {
+        throw new Error(
+          "Login response is missing the JWT, user id, or account role.",
+        );
+      }
+
+      if (role !== expectedRole) {
+        throw new Error(
+          expectedRole === "Partner"
+            ? "This is a customer account. Use a partner account to manage restaurants."
+            : "This is a partner account. Use a customer account to make reservations.",
+        );
       }
 
       localStorage.setItem("access_token", token);
       localStorage.setItem("user_name", name);
       localStorage.setItem("user_id", id);
+      localStorage.setItem("user_role", role);
 
       setIsLoggedIn(true);
       setUserName(name);
-      setCurrentUser({ id, name, email });
+      setCurrentUser({ id, name, email, role });
 
       toast.success("Signed in");
       onClose?.();
