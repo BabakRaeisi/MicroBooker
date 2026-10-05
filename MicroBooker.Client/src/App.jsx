@@ -1,25 +1,40 @@
 import { useState } from "react";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import Navbar from "./Navbar";
-import Sidebar from "./Sidebar";
-import Tables from "./Tables";
+import Header from "./Header";
+import BookingView from "./BookingView";
+import AdminView from "./AdminView";
 import AuthPanel from "./AuthPanel";
 
 const App = () => {
-  const [showAuthPanel, setShowAuthPanel] = useState(false);
+  const [view, setView] = useState("booking");
+  const [showAuth, setShowAuth] = useState(false);
 
   return (
-    <main>
-      <Navbar
-        onAuthToggle={() => setShowAuthPanel((v) => !v)}
-        showAuthPanel={showAuthPanel}
-        authPanel={<AuthPanel onClose={() => setShowAuthPanel(false)} />}
+    <div className="app-shell">
+      <Header
+        view={view}
+        onViewChange={setView}
+        onAuthOpen={() => setShowAuth(true)}
       />
-      <Sidebar />
-      <Tables />
-      <ToastContainer position="top-right" autoClose={2500} />
-    </main>
+
+      <main className="app-main">
+        {view === "booking" ? (
+          <BookingView onAuthOpen={() => setShowAuth(true)} />
+        ) : (
+          <AdminView onAuthOpen={() => setShowAuth(true)} />
+        )}
+      </main>
+
+      {showAuth && <AuthPanel onClose={() => setShowAuth(false)} />}
+
+      <ToastContainer
+        position="bottom-right"
+        autoClose={2800}
+        newestOnTop
+        theme="light"
+      />
+    </div>
   );
 };
 
