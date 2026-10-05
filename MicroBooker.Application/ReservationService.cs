@@ -1,5 +1,5 @@
-using MicroBooker.Domain;
 using Microsoft.Extensions.Logging;
+using MicroBooker.Domain;
 
 namespace MicroBooker.Application;
 
@@ -9,6 +9,7 @@ public class ReservationService
     private readonly IEventPublisher _eventPublisher;
     private readonly IReservationRepository _reservationRepository;
     private readonly IRestaurantTableRepository _tableRepository;
+    private readonly IRestaurantRepository _restaurantRepository;
     private readonly ILogger<ReservationService> _logger;
 
     public ReservationService(
@@ -16,12 +17,14 @@ public class ReservationService
         IEventPublisher eventPublisher,
         IReservationRepository reservationRepository,
         IRestaurantTableRepository tableRepository,
+        IRestaurantRepository restaurantRepository,
         ILogger<ReservationService> logger)
     {
         _lockService = lockService;
         _eventPublisher = eventPublisher;
         _reservationRepository = reservationRepository;
         _tableRepository = tableRepository;
+        _restaurantRepository = restaurantRepository;
         _logger = logger;
     }
 
@@ -36,6 +39,7 @@ public class ReservationService
 
     public async Task<BookingResult> BookTableAsync(
         ReservationRequestDto request,
+        string customerId,
         CancellationToken ct = default)
     {
         var table = await _tableRepository.GetByIdAsync(
@@ -66,6 +70,33 @@ public class ReservationService
                 BookingFailureReason.PartyTooLarge);
         }
 
+        if (request.TimeSlot <= DateTimeOffset.UtcNow)
+        {
+            return BookingResult.Failure(
+                BookingFailureReason.TimeSlotInPast);
+        }
+
+        var restaurant = await _restaurantRepository.GetByIdAsync(
+            request.RestaurantId,
+            ct);
+
+        if (restaurant is null)
+        {
+            return BookingResult.Failure(
+                BookingFailureReason.RestaurantNotFound);
+        }
+
+        var requestedLocalTime = TimeOnly.FromDateTime(request.TimeSlot.DateTime);
+
+        if (!IsWithinOpeningHours(
+                requestedLocalTime,
+                restaurant.OpeningTime,
+                restaurant.ClosingTime))
+        {
+            return BookingResult.Failure(
+                BookingFailureReason.RestaurantClosed);
+        }
+
         var isLocked = await _lockService.AcquireLockAsync(
             request.TableId,
             request.TimeSlot,
@@ -77,13 +108,16 @@ public class ReservationService
                 BookingFailureReason.SlotLocked);
         }
 
+        var normalizedTimeSlot =
+            request.TimeSlot.ToUniversalTime().ToString("O");
+
         var reservation = new Reservation
         {
             Id = Guid.NewGuid(),
-            CustomerId = request.CustomerId,
+            CustomerId = customerId,
             RestaurantId = request.RestaurantId,
             TableId = request.TableId,
-            TimeSlot = request.TimeSlot,
+            TimeSlot = normalizedTimeSlot,
             PartySize = request.PartySize,
             CreatedAt = DateTime.UtcNow
         };
@@ -98,17 +132,14 @@ public class ReservationService
                 "Duplicate booking rejected for {RestaurantId}, {TableId}, {TimeSlot}",
                 request.RestaurantId,
                 request.TableId,
-                request.TimeSlot);
+                normalizedTimeSlot);
 
             return BookingResult.Failure(
                 BookingFailureReason.AlreadyBooked);
         }
 
         // TODO: Improve reliability with the transactional outbox pattern.
-        // Right now, the reservation is saved before the Kafka event is published.
-        // If publishing fails, the booking can exist even though the event was not published.
-        // Store the reservation and an outbox event atomically,
-        // then publish from a background worker.
+        // The reservation is currently saved before the Kafka event is published.
         try
         {
             await _eventPublisher.PublishReservationCreatedAsync(
@@ -125,10 +156,23 @@ public class ReservationService
 
         return BookingResult.Success(reservation);
     }
-    public async Task<IReadOnlyList<Reservation>> GetAllAsync(
-    CancellationToken cancellationToken = default)
-{
-    return await _reservationRepository.GetAllAsync(
-        cancellationToken);
-}
+
+    private static bool IsWithinOpeningHours(
+        TimeOnly time,
+        TimeOnly openingTime,
+        TimeOnly closingTime)
+    {
+        if (openingTime == closingTime)
+            return false;
+
+        if (openingTime < closingTime)
+        {
+            return time >= openingTime &&
+                   time < closingTime;
+        }
+
+        // Overnight schedule, for example 18:00-02:00.
+        return time >= openingTime ||
+               time < closingTime;
+    }
 }
