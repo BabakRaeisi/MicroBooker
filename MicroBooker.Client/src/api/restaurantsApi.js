@@ -1,5 +1,10 @@
 import http from "./http";
 
+export const getRestaurants = async () => {
+  const { data } = await http.get("/api/Restaurants");
+  return data;
+};
+
 export const createRestaurant = async (payload) => {
   const { data } = await http.post("/api/Restaurants", payload);
   return data;
@@ -19,6 +24,11 @@ export const getRestaurantAvailability = async (restaurantId) => {
   const { data } = await http.get(
     `/api/Restaurants/${restaurantId}/availability`,
   );
+  return data;
+};
+
+export const getOwnedRestaurants = async () => {
+  const { data } = await http.get("/api/admin/restaurants");
   return data;
 };
 
