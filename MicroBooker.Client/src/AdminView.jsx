@@ -202,8 +202,17 @@ const AdminView = ({ onAuthOpen, onViewRestaurant }) => {
         setSetupRestaurantSaved(true);
       }
 
+      const existingTableNumbers = new Set(
+        adminTables.map((table) =>
+          Number(table.tableNumber ?? table.TableNumber),
+        ),
+      );
+
       for (const table of normalizedTables) {
+        if (existingTableNumbers.has(table.tableNumber)) continue;
+
         await addAdminTable(table);
+        existingTableNumbers.add(table.tableNumber);
       }
 
       await loadOwnedRestaurants(false);
