@@ -136,7 +136,7 @@ jobs:
             any(
               .Rules[].Conditions[]?;
               .Field == "path-pattern" and
-              any(.Values[]?; . == "/api/Restaurants*" or . == "/api/admin/restaurants*")
+              any(.Values[]?; . == "/api/restaurants*" or . == "/api/admin/restaurants*")
             )
           ' >/dev/null; then
             echo "Restaurant routing rule already exists."
@@ -161,7 +161,7 @@ jobs:
           aws elbv2 create-rule \
             --listener-arn "$LISTENER_ARN" \
             --priority "$PRIORITY" \
-            --conditions 'Field=path-pattern,Values=/api/Restaurants*,/api/admin/restaurants*' \
+            --conditions 'Field=path-pattern,Values=/api/restaurants*,/api/admin/restaurants*' \
             --actions "Type=forward,TargetGroupArn=$TG_ARN"
 
           echo "Created restaurant routing rule at priority $PRIORITY."
