@@ -8,11 +8,16 @@ import {
   useState,
 } from "react";
 import { toast } from "react-toastify";
-import restaurantTables, { sidebarDates } from "../tablesData";
-import { createReservation, getReservations } from "../api/reservationsApi";
+import { sidebarDates } from "../tablesData";
+import { createReservation } from "../api/reservationsApi";
+import {
+  getRestaurantAvailability,
+  getRestaurantTables,
+} from "../api/restaurantsApi";
 
 const AppContext = createContext(null);
-const RESERVATION_REFRESH_INTERVAL_MS = 5000;
+const AVAILABILITY_REFRESH_INTERVAL_MS = 5000;
+const RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || "";
 
 const normalizeReservation = (reservation) => ({
   tableId: reservation?.tableId ?? reservation?.TableId ?? "",
@@ -29,17 +34,50 @@ const to24Hour = (time12h) => {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 };
 
-export const AppProvider = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
+const toLocalDateKey = (date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 
+const toLocalTimeKey = (date) =>
+  `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+
+const buildLocalDateTimeOffset = (dateString, time12h) => {
+  const time24h = to24Hour(time12h);
+  const localDate = new Date(`${dateString}T${time24h}:00`);
+
+  const offsetMinutes = -localDate.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = String(Math.floor(absoluteOffset / 60)).padStart(2, "0");
+  const offsetMins = String(absoluteOffset % 60).padStart(2, "0");
+
+  return `${dateString}T${time24h}:00${sign}${offsetHours}:${offsetMins}`;
+};
+
+export const AppProvider = ({ children }) => {
+  const storedToken = localStorage.getItem("access_token");
+  const storedUserName = localStorage.getItem("user_name") || "";
+  const storedUserId = localStorage.getItem("user_id") || "";
+
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(storedToken));
+  const [userName, setUserName] = useState(storedUserName);
+  const [currentUser, setCurrentUser] = useState(
+    storedUserId
+      ? { id: storedUserId, name: storedUserName, email: "" }
+      : null,
+  );
+
+  const [restaurantTables, setRestaurantTables] = useState([]);
   const [selectedDateId, setSelectedDateId] = useState(
     sidebarDates[0]?.id || null,
   );
   const [selectedTime, setSelectedTime] = useState(null);
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingTables, setIsLoadingTables] = useState(true);
   const [reservations, setReservations] = useState([]);
 
   const selectedDate =
@@ -49,76 +87,113 @@ export const AppProvider = ({ children }) => {
   const selectedTable =
     restaurantTables.find((table) => table.id === selectedTableId) ?? null;
 
-  const loadReservations = useCallback(async (showError = true) => {
-    try {
-      const data = await getReservations();
+  const loadAvailability = useCallback(
+    async (showError = true) => {
+      if (!RESTAURANT_ID) return;
 
-      setReservations(
-        Array.isArray(data) ? data.map(normalizeReservation) : [],
-      );
-    } catch {
-      if (showError) {
-        toast.error("Failed to load reservations");
+      try {
+        const data = await getRestaurantAvailability(RESTAURANT_ID);
+
+        setReservations(
+          Array.isArray(data) ? data.map(normalizeReservation) : [],
+        );
+      } catch {
+        if (showError) {
+          toast.error("Failed to load table availability");
+        }
       }
+    },
+    [],
+  );
+
+  const loadTables = useCallback(async () => {
+    if (!RESTAURANT_ID) {
+      setIsLoadingTables(false);
+      toast.error("Restaurant id is not configured");
+      return;
+    }
+
+    try {
+      const data = await getRestaurantTables(RESTAURANT_ID);
+      setRestaurantTables(Array.isArray(data) ? data : []);
+    } catch {
+      toast.error("Failed to load restaurant tables");
+      setRestaurantTables([]);
+    } finally {
+      setIsLoadingTables(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadReservations();
+    void loadTables();
+    void loadAvailability();
 
-    const refreshReservations = () => {
-      void loadReservations(false);
+    const refreshAvailability = () => {
+      void loadAvailability(false);
     };
 
     const intervalId = window.setInterval(
-      refreshReservations,
-      RESERVATION_REFRESH_INTERVAL_MS,
+      refreshAvailability,
+      AVAILABILITY_REFRESH_INTERVAL_MS,
     );
 
-    window.addEventListener("focus", refreshReservations);
+    window.addEventListener("focus", refreshAvailability);
 
     return () => {
       window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshReservations);
+      window.removeEventListener("focus", refreshAvailability);
     };
-  }, [loadReservations]);
+  }, [loadAvailability, loadTables]);
 
-  const bookedKeys = useMemo(
+  const reservationSlots = useMemo(
     () =>
-      new Set(
-        reservations
-          .filter((reservation) => reservation.tableId && reservation.timeSlot)
-          .map(
-            (reservation) => `${reservation.tableId}|${reservation.timeSlot}`,
-          ),
-      ),
+      reservations
+        .map((reservation) => {
+          const parsedDate = new Date(reservation.timeSlot);
+
+          if (
+            !reservation.tableId ||
+            !reservation.timeSlot ||
+            Number.isNaN(parsedDate.getTime())
+          ) {
+            return null;
+          }
+
+          return {
+            tableId: String(reservation.tableId),
+            date: toLocalDateKey(parsedDate),
+            time: toLocalTimeKey(parsedDate),
+          };
+        })
+        .filter(Boolean),
     [reservations],
   );
 
   const getBookedTimesForTableOnDate = useCallback(
-    (tableNumber, dateString) => {
-      const prefix = `${dateString}T`;
-
-      return reservations
+    (tableId, dateString) =>
+      reservationSlots
         .filter(
-          (reservation) =>
-            reservation.tableId === tableNumber &&
-            reservation.timeSlot.startsWith(prefix),
+          (slot) =>
+            slot.tableId === String(tableId) && slot.date === dateString,
         )
-        .map((reservation) => reservation.timeSlot.slice(11, 16));
-    },
-    [reservations],
+        .map((slot) => slot.time),
+    [reservationSlots],
   );
 
   const isTableBooked = useCallback(
-    (tableNumber) => {
+    (tableId) => {
       if (!selectedDate || !selectedTime) return false;
 
-      const timeSlot = `${selectedDate.date}T${to24Hour(selectedTime)}:00`;
+      const time24h = to24Hour(selectedTime);
 
-      return bookedKeys.has(`${tableNumber}|${timeSlot}`);
+      return reservationSlots.some(
+        (slot) =>
+          slot.tableId === String(tableId) &&
+          slot.date === selectedDate.date &&
+          slot.time === time24h,
+      );
     },
-    [bookedKeys, selectedDate, selectedTime],
+    [reservationSlots, selectedDate, selectedTime],
   );
 
   const isTimeBookedForSelectedTable = useCallback(
@@ -127,7 +202,7 @@ export const AppProvider = ({ children }) => {
 
       const time24h = to24Hour(time12h);
       const bookedTimes = getBookedTimesForTableOnDate(
-        selectedTable.tableNumber,
+        selectedTable.id,
         selectedDate.date,
       );
 
@@ -139,29 +214,25 @@ export const AppProvider = ({ children }) => {
   const handleLogout = () => {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_name");
+    localStorage.removeItem("user_id");
     setIsLoggedIn(false);
     setUserName("");
     setCurrentUser(null);
   };
 
   const handleSelectTable = (table) => {
-    if (isTableBooked(table.tableNumber)) {
+    if (isTableBooked(table.id)) {
       toast.error("This table is already booked for selected date/time");
       return;
     }
 
     setSelectedTableId(table.id);
-    toast.info(`${table.tableNumber.replaceAll("_", " ")} selected`);
+    toast.info(`Table ${table.tableNumber} selected`);
   };
 
   const handleReserve = async () => {
     if (!isLoggedIn) {
       toast.error("Please log in first");
-      return;
-    }
-
-    if (!currentUser?.id) {
-      toast.error("User session missing id. Please login again.");
       return;
     }
 
@@ -180,16 +251,15 @@ export const AppProvider = ({ children }) => {
       return;
     }
 
-    if (isTableBooked(selectedTable.tableNumber)) {
+    if (isTableBooked(selectedTable.id)) {
       toast.error("This slot is already taken. Pick another time/table.");
       return;
     }
 
     const payload = {
-      customerId: currentUser.id,
-      restaurantId: "demo-restaurant-1",
-      tableId: selectedTable.tableNumber,
-      timeSlot: `${selectedDate.date}T${to24Hour(selectedTime)}:00`,
+      restaurantId: RESTAURANT_ID,
+      tableId: selectedTable.id,
+      timeSlot: buildLocalDateTimeOffset(selectedDate.date, selectedTime),
       partySize: selectedTable.capacity,
     };
 
@@ -201,28 +271,21 @@ export const AppProvider = ({ children }) => {
       );
 
       if (createdReservation.tableId && createdReservation.timeSlot) {
-        const createdKey = `${createdReservation.tableId}|${createdReservation.timeSlot}`;
-
         setReservations((currentReservations) => [
           createdReservation,
-          ...currentReservations.filter(
-            (reservation) =>
-              `${reservation.tableId}|${reservation.timeSlot}` !== createdKey,
-          ),
+          ...currentReservations,
         ]);
       }
 
       toast.success(
-        `Reserved ${selectedTable.tableNumber.replaceAll("_", " ")} for ${selectedDate.dayOfWeek}, ${selectedDate.dayLabel} at ${selectedTime}`,
+        `Reserved Table ${selectedTable.tableNumber} for ${selectedDate.dayOfWeek}, ${selectedDate.dayLabel} at ${selectedTime}`,
       );
     } catch (error) {
       const message =
         error?.response?.data?.message || "Reservation failed. Try again.";
 
       toast.error(message);
-
-      // Refresh in case another user booked the slot first.
-      void loadReservations(false);
+      void loadAvailability(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -237,6 +300,9 @@ export const AppProvider = ({ children }) => {
     setCurrentUser,
     handleLogout,
 
+    restaurantId: RESTAURANT_ID,
+    restaurantTables,
+    isLoadingTables,
     selectedTableId,
     selectedDateId,
     selectedTime,
@@ -253,7 +319,7 @@ export const AppProvider = ({ children }) => {
     isTableBooked,
     isTimeBookedForSelectedTable,
     getBookedTimesForTableOnDate,
-    loadReservations,
+    loadAvailability,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
