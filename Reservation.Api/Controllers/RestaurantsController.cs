@@ -36,8 +36,7 @@ public class RestaurantsController : ControllerBase
             restaurant.Slug,
             restaurant.Address,
             restaurant.Phone,
-            restaurant.OpeningTime,
-            restaurant.ClosingTime
+            restaurant.OperatingHours
         }));
     }
 
@@ -92,8 +91,7 @@ public class RestaurantsController : ControllerBase
             restaurant.Slug,
             restaurant.Address,
             restaurant.Phone,
-            restaurant.OpeningTime,
-            restaurant.ClosingTime
+            restaurant.OperatingHours
         });
     }
 
