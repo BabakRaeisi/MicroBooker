@@ -46,4 +46,41 @@ public class AdminReservationsController : ControllerBase
 
         return Ok(reservations);
     }
+
+    [HttpPatch("{reservationId:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(
+        Guid restaurantId,
+        Guid reservationId,
+        [FromBody] UpdateReservationStatusRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var isOwner = await _restaurantService.IsOwnerAsync(
+            restaurantId,
+            userId,
+            cancellationToken);
+
+        if (!isOwner)
+            return Forbid();
+
+        var reservation = await _reservationService.UpdateStatusAsync(
+            restaurantId,
+            reservationId,
+            request.Status,
+            cancellationToken);
+
+        if (reservation is null)
+        {
+            return NotFound(new
+            {
+                message = "Reservation not found for this restaurant."
+            });
+        }
+
+        return Ok(reservation);
+    }
 }
