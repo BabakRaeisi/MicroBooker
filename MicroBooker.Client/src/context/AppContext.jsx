@@ -171,7 +171,7 @@ export const AppProvider = ({ children }) => {
     } finally {
       setDirectoryLoading(false);
     }
-  }, [currentUser?.role]);
+  }, []);
 
   const refreshBooking = useCallback(
     async (showError = true, showLoading = false) => {
@@ -293,10 +293,17 @@ export const AppProvider = ({ children }) => {
     } finally {
       setOwnedRestaurantsLoading(false);
     }
-  }, []);
+  }, [currentUser?.role]);
 
   const loadAdminRestaurant = useCallback(
     async (restaurantId, showError = true) => {
+      if (currentUser?.role !== "Partner") {
+        if (showError) {
+          toast.error("Only partner accounts can manage restaurants.");
+        }
+        return false;
+      }
+
       const id = restaurantId?.trim();
 
       if (!id) {
@@ -338,7 +345,7 @@ export const AppProvider = ({ children }) => {
         setAdminLoading(false);
       }
     },
-    [],
+    [currentUser?.role],
   );
 
   const createOwnedRestaurant = useCallback(
