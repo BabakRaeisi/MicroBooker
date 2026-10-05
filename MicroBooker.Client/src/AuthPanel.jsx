@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FiLock, FiUser, FiX } from "react-icons/fi";
 import { toast } from "react-toastify";
 import { login, register } from "./services/authApi";
 import { useAppContext } from "./context/AppContext";
@@ -33,8 +34,8 @@ const AuthPanel = ({ onClose }) => {
 
   const { setIsLoggedIn, setUserName, setCurrentUser } = useAppContext();
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  const handleRegister = async (event) => {
+    event.preventDefault();
     try {
       setIsSubmitting(true);
       await register({
@@ -42,18 +43,18 @@ const AuthPanel = ({ onClose }) => {
         email: registerForm.email.trim(),
         personName: registerForm.personName.trim(),
       });
-      toast.success("Registered successfully");
+      toast.success("Account created. Sign in to continue.");
       setRegisterForm(emptyRegister);
       setMode("login");
-    } catch (err) {
-      toast.error(err.message || "Registration failed");
+    } catch (error) {
+      toast.error(error.message || "Registration failed");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleLogin = async (event) => {
+    event.preventDefault();
     try {
       setIsSubmitting(true);
 
@@ -74,129 +75,180 @@ const AuthPanel = ({ onClose }) => {
           "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"
         ] ||
         "";
+
       const name =
-        result?.PersonName || result?.personName || payload?.unique_name || "";
+        result?.PersonName ||
+        result?.personName ||
+        payload?.name ||
+        payload?.unique_name ||
+        "";
+
       const email = result?.Email || result?.email || loginForm.email.trim();
 
-      if (!id) {
-        toast.error(
-          "Login succeeded but user id is missing in response/token.",
-        );
-        return;
+      if (!token || !id) {
+        throw new Error("Login response is missing the JWT or user id.");
       }
 
-      if (token) localStorage.setItem("access_token", token);
-      localStorage.setItem("user_name", name || "");
+      localStorage.setItem("access_token", token);
+      localStorage.setItem("user_name", name);
       localStorage.setItem("user_id", id);
 
       setIsLoggedIn(true);
-      setUserName(name || "");
-      setCurrentUser({ id, name: name || "", email });
+      setUserName(name);
+      setCurrentUser({ id, name, email });
 
-      toast.success("Logged in successfully");
+      toast.success("Signed in");
       onClose?.();
-    } catch (err) {
-      toast.error(err.message || "Login failed");
+    } catch (error) {
+      toast.error(error.message || "Login failed");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <section className="auth-panel auth-panel-floating">
-      <div className="auth-panel-header">
-        <button
-          type="button"
-          className={`auth-toggle ${mode === "login" ? "active" : ""}`}
-          onClick={() => setMode("login")}
-        >
-          Login
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="auth-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Authentication"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button type="button" className="modal-close" onClick={onClose}>
+          <FiX />
         </button>
 
-        <button
-          type="button"
-          className={`auth-toggle ${mode === "register" ? "active" : ""}`}
-          onClick={() => setMode("register")}
-        >
-          Register
-        </button>
+        <div className="auth-brand">
+          <div className="brand-mark">MB</div>
+          <div>
+            <span className="eyebrow">MicroBooker account</span>
+            <h2>{mode === "login" ? "Welcome back" : "Create your account"}</h2>
+          </div>
+        </div>
 
-        <button type="button" className="auth-close" onClick={onClose}>
-          ×
-        </button>
-      </div>
-
-      {mode === "login" ? (
-        <form onSubmit={handleLogin} className="auth-form">
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            placeholder="Email"
-            value={loginForm.email}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, email: e.target.value })
-            }
-          />
-          <input
-            placeholder="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={loginForm.password}
-            onChange={(e) =>
-              setLoginForm({ ...loginForm, password: e.target.value })
-            }
-          />
-          <button type="submit" className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? "Please wait..." : "Login"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleRegister} className="auth-form">
-          <input
-            type="email"
-            autoComplete="email"
-            required
-            placeholder="Email"
-            value={registerForm.email}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, email: e.target.value })
-            }
-          />
-          <input
-            placeholder="Password"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={registerForm.password}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, password: e.target.value })
-            }
-          />
-          <input
-            placeholder="Person Name"
-            required
-            value={registerForm.personName}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, personName: e.target.value })
-            }
-          />
-          <select
-            value={registerForm.gender}
-            onChange={(e) =>
-              setRegisterForm({ ...registerForm, gender: e.target.value })
-            }
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
           >
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-          </select>
-          <button type="submit" className="auth-submit" disabled={isSubmitting}>
-            {isSubmitting ? "Please wait..." : "Register"}
+            Sign in
           </button>
-        </form>
-      )}
-    </section>
+          <button
+            type="button"
+            className={mode === "register" ? "active" : ""}
+            onClick={() => setMode("register")}
+          >
+            Register
+          </button>
+        </div>
+
+        {mode === "login" ? (
+          <form className="auth-form" onSubmit={handleLogin}>
+            <label className="field">
+              <span>Email</span>
+              <div className="input-with-icon">
+                <FiUser />
+                <input
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={loginForm.email}
+                  onChange={(event) =>
+                    setLoginForm({ ...loginForm, email: event.target.value })
+                  }
+                  placeholder="you@example.com"
+                />
+              </div>
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <div className="input-with-icon">
+                <FiLock />
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={loginForm.password}
+                  onChange={(event) =>
+                    setLoginForm({ ...loginForm, password: event.target.value })
+                  }
+                  placeholder="Your password"
+                />
+              </div>
+            </label>
+            <button className="primary-button auth-submit" disabled={isSubmitting}>
+              {isSubmitting ? "Signing in..." : "Sign in"}
+            </button>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={handleRegister}>
+            <label className="field">
+              <span>Name</span>
+              <input
+                required
+                value={registerForm.personName}
+                onChange={(event) =>
+                  setRegisterForm({
+                    ...registerForm,
+                    personName: event.target.value,
+                  })
+                }
+                placeholder="Your name"
+              />
+            </label>
+            <label className="field">
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                value={registerForm.email}
+                onChange={(event) =>
+                  setRegisterForm({ ...registerForm, email: event.target.value })
+                }
+                placeholder="you@example.com"
+              />
+            </label>
+            <label className="field">
+              <span>Password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                required
+                value={registerForm.password}
+                onChange={(event) =>
+                  setRegisterForm({
+                    ...registerForm,
+                    password: event.target.value,
+                  })
+                }
+                placeholder="Create a password"
+              />
+            </label>
+            <label className="field">
+              <span>Gender</span>
+              <select
+                value={registerForm.gender}
+                onChange={(event) =>
+                  setRegisterForm({
+                    ...registerForm,
+                    gender: event.target.value,
+                  })
+                }
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+            </label>
+            <button className="primary-button auth-submit" disabled={isSubmitting}>
+              {isSubmitting ? "Creating account..." : "Create account"}
+            </button>
+          </form>
+        )}
+      </section>
+    </div>
   );
 };
 
