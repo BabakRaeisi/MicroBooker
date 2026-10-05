@@ -9,13 +9,6 @@ public class CreateRestaurantRequestDto : IValidatableObject
     public string Name { get; set; } = string.Empty;
 
     [Required]
-    [MaxLength(100)]
-    [RegularExpression(
-        @"^[a-z0-9]+(?:-[a-z0-9]+)*$",
-        ErrorMessage = "Slug can only contain lowercase letters, numbers, and hyphens.")]
-    public string Slug { get; set; } = string.Empty;
-
-    [Required]
     [MaxLength(200)]
     public string Address { get; set; } = string.Empty;
 
@@ -23,17 +16,38 @@ public class CreateRestaurantRequestDto : IValidatableObject
     [MaxLength(30)]
     public string Phone { get; set; } = string.Empty;
 
-    public TimeOnly OpeningTime { get; set; }
-
-    public TimeOnly ClosingTime { get; set; }
+    [Required]
+    [MinLength(1)]
+    public List<CreateRestaurantOperatingHoursDto> OperatingHours { get; set; } = [];
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (OpeningTime == ClosingTime)
+        if (OperatingHours
+            .GroupBy(item => item.DayOfWeek)
+            .Any(group => group.Count() > 1))
         {
             yield return new ValidationResult(
-                "Opening and closing times cannot be the same.",
-                new[] { nameof(OpeningTime), nameof(ClosingTime) });
+                "Each operating day can only be configured once.",
+                new[] { nameof(OperatingHours) });
+        }
+
+        foreach (var hours in OperatingHours)
+        {
+            if (hours.OpeningTime == hours.ClosingTime)
+            {
+                yield return new ValidationResult(
+                    $"{hours.DayOfWeek}: opening and closing times cannot be the same.",
+                    new[] { nameof(OperatingHours) });
+            }
         }
     }
+}
+
+public class CreateRestaurantOperatingHoursDto
+{
+    public DayOfWeek DayOfWeek { get; set; }
+
+    public TimeOnly OpeningTime { get; set; }
+
+    public TimeOnly ClosingTime { get; set; }
 }
