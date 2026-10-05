@@ -99,12 +99,18 @@ public class ReservationService
                 BookingFailureReason.RestaurantNotFound);
         }
 
-        var requestedLocalTime = TimeOnly.FromDateTime(request.TimeSlot.DateTime);
+        var requestedLocalDateTime = request.TimeSlot.DateTime;
+        var requestedDay = requestedLocalDateTime.DayOfWeek;
+        var requestedLocalTime = TimeOnly.FromDateTime(requestedLocalDateTime);
 
-        if (!IsWithinOpeningHours(
+        var operatingHours = restaurant.OperatingHours
+            .FirstOrDefault(hours => hours.DayOfWeek == requestedDay);
+
+        if (operatingHours is null ||
+            !IsWithinOpeningHours(
                 requestedLocalTime,
-                restaurant.OpeningTime,
-                restaurant.ClosingTime))
+                operatingHours.OpeningTime,
+                operatingHours.ClosingTime))
         {
             return BookingResult.Failure(
                 BookingFailureReason.RestaurantClosed);
