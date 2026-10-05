@@ -12,7 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,28 +33,16 @@ builder.Services.AddSwaggerGen(options =>
         "Bearer",
         new OpenApiSecurityScheme
         {
-            Name = "Authorization",
             Type = SecuritySchemeType.Http,
             Scheme = "bearer",
             BearerFormat = "JWT",
-            In = ParameterLocation.Header,
-            Description = "Enter your JWT bearer token."
+            Description = "JWT Authorization header using the Bearer scheme."
         });
 
-    options.AddSecurityRequirement(
+    options.AddSecurityRequirement(document =>
         new OpenApiSecurityRequirement
         {
-            {
-                new OpenApiSecurityScheme
-                {
-                    Reference = new OpenApiReference
-                    {
-                        Type = ReferenceType.SecurityScheme,
-                        Id = "Bearer"
-                    }
-                },
-                Array.Empty<string>()
-            }
+            [new OpenApiSecuritySchemeReference("Bearer", document)] = []
         });
 });
 
