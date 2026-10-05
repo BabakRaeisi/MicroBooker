@@ -40,7 +40,7 @@ public class RestaurantsController : ControllerBase
         }));
     }
 
-    [Authorize]
+    [Authorize(Roles = "Partner")]
     [HttpPost]
     public async Task<IActionResult> CreateRestaurant(
         [FromBody] CreateRestaurantRequestDto request,
