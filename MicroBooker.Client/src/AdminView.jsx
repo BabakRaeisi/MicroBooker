@@ -49,12 +49,6 @@ const AdminView = ({ onAuthOpen }) => {
     setLookupId(adminRestaurantId);
   }, [adminRestaurantId]);
 
-  useEffect(() => {
-    if (isLoggedIn && adminRestaurantId) {
-      void loadAdminRestaurant(adminRestaurantId, false);
-    }
-  }, [isLoggedIn, adminRestaurantId, loadAdminRestaurant]);
-
   const counts = useMemo(() => {
     const result = { Pending: 0, Confirmed: 0, Cancelled: 0 };
     adminReservations.forEach((reservation) => {
