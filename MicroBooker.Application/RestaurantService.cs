@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MicroBooker.Domain;
 
 namespace MicroBooker.Application;
@@ -16,16 +17,31 @@ public class RestaurantService
         string ownerUserId,
         CancellationToken cancellationToken = default)
     {
+        var id = Guid.NewGuid();
+        var baseSlug = Regex
+            .Replace(request.Name.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-")
+            .Trim('-');
+
+        if (string.IsNullOrWhiteSpace(baseSlug))
+            baseSlug = "restaurant";
+
         var restaurant = new Restaurant
         {
-            Id = Guid.NewGuid(),
+            Id = id,
             OwnerUserId = ownerUserId,
             Name = request.Name.Trim(),
-            Slug = request.Slug.Trim().ToLowerInvariant(),
+            Slug = $"{baseSlug}-{id.ToString("N")[..6]}",
             Address = request.Address.Trim(),
             Phone = request.Phone.Trim(),
-            OpeningTime = request.OpeningTime,
-            ClosingTime = request.ClosingTime
+            OperatingHours = request.OperatingHours
+                .OrderBy(item => item.DayOfWeek)
+                .Select(item => new RestaurantOperatingHours
+                {
+                    DayOfWeek = item.DayOfWeek,
+                    OpeningTime = item.OpeningTime,
+                    ClosingTime = item.ClosingTime
+                })
+                .ToList()
         };
 
         var created = await _restaurantRepository.TryCreateAsync(
