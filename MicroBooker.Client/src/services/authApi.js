@@ -17,14 +17,14 @@ async function postJson(url, payload) {
 
     if (!res.ok) {
       const error = new Error(data?.message || `HTTP ${res.status}`);
-      requestFinished(requestId, res.status, error);
+      error.status = res.status;
       throw error;
     }
 
     requestFinished(requestId, res.status);
     return data;
   } catch (error) {
-    requestFinished(requestId, null, error);
+    requestFinished(requestId, error.status ?? null, error);
     throw error;
   }
 }
